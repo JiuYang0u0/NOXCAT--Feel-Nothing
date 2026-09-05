@@ -72,6 +72,7 @@ import {
   clampToLaunchBoundary,
   crossedLaunchBoundary,
 } from '../systems/JellyMotionSystem';
+import { GlassShatterEffect } from '../effects/GlassShatterEffect';
 
 /** 拉桿不足的提示至少維持這麼久，之後才交還給脆弱窗口倒數。 */
 const PULL_HINT_HOLD_MS = 650;
@@ -101,6 +102,7 @@ export class BattleScene extends Phaser.Scene {
   private waveGuide!: Phaser.GameObjects.Graphics;
   private lastHomingCueMs = 0;
   private bossSpeech!: Phaser.GameObjects.Text;
+  private glassShatter!: GlassShatterEffect;
   private chatterTimer?: Phaser.Time.TimerEvent;
   private battleLineIndex = 0;
   private lastBossLineAt = Number.NEGATIVE_INFINITY;
@@ -175,6 +177,7 @@ export class BattleScene extends Phaser.Scene {
     // A submit, camera, or skip gesture has already happened before the Scene
     // exists. Browsers requiring a canvas gesture retry from setupInput.
     void this.audio.unlock();
+    this.glassShatter = new GlassShatterEffect(this);
     this.setupBossChatter();
     const fixedSequence = import.meta.env.DEV ? runtime.attackSequence : undefined;
     this.director = new AttackDirector(
@@ -717,6 +720,17 @@ export class BattleScene extends Phaser.Scene {
       const audioReady = this.audio.unlock();
       if (this.focusPaused || this.activePointerId !== null) return;
       const world = viewportPointToWorld(this.viewportLayout, pointer.x, pointer.y);
+      if (this.isBossSpeechHit(pointer)) {
+        this.triggerBossSpeechShatter(pointer);
+        this.lastInputSample = {
+          event: 'down',
+          rawX: pointer.x,
+          rawY: pointer.y,
+          worldX: world.x,
+          worldY: world.y,
+        };
+        return;
+      }
       this.lastInputSample = {
         event: 'down',
         rawX: pointer.x,
@@ -1174,6 +1188,54 @@ export class BattleScene extends Phaser.Scene {
       align: 'center',
       wordWrap: { width: 450 },
     }).setOrigin(0.5).setDepth(105).setAlpha(0);
+    this.bossSpeech.setInteractive({ useHandCursor: true });
+  }
+
+  private isBossSpeechHit(pointer: Phaser.Input.Pointer): boolean {
+    if (this.ended || this.focusPaused || isTerminalBattleState(this.session.state)) return false;
+    if (this.session.state === BattleState.INTRO) return false;
+    if (!this.bossSpeech.visible || this.bossSpeech.alpha < 0.12) return false;
+    const world = viewportPointToWorld(this.viewportLayout, pointer.x, pointer.y);
+    const bounds = this.bossSpeech.getBounds();
+    const pad = 10;
+    return world.x >= bounds.left - pad && world.x <= bounds.right + pad
+      && world.y >= bounds.top - pad && world.y <= bounds.bottom + pad;
+  }
+
+  private triggerBossSpeechShatter(pointer: Phaser.Input.Pointer): void {
+    const now = this.time.now;
+    if (!this.glassShatter?.canShatter(now)) return;
+    const world = viewportPointToWorld(this.viewportLayout, pointer.x, pointer.y);
+    const bounds = this.bossSpeech.getBounds();
+    const shatterX = Phaser.Math.Clamp(world.x, bounds.left + 12, bounds.right - 12);
+    const shatterY = Phaser.Math.Clamp(world.y, bounds.top + 12, bounds.bottom - 12);
+    const reduced = this.performanceQuality.level === 'reduced' || this.projectiles?.isVisualQualityReduced === true;
+    const shattered = this.glassShatter.shatter(shatterX, shatterY, reduced);
+    if (!shattered) return;
+    this.audio.play('reflect');
+    this.tweens.killTweensOf(this.bossSpeech);
+    this.tweens.add({
+      targets: this.bossSpeech,
+      scaleX: 0.94,
+      scaleY: 1.06,
+      duration: 55,
+      yoyo: true,
+      repeat: 1,
+      ease: 'Sine.easeInOut',
+      onComplete: () => this.bossSpeech.setScale(1),
+    });
+  }
+
+  private syncBossSpeechInteractive(): void {
+    if (!this.bossSpeech) return;
+    const bounds = this.bossSpeech.getBounds();
+    const w = Math.max(120, bounds.width + 20);
+    const h = Math.max(36, bounds.height + 16);
+    this.bossSpeech.setInteractive(
+      new Phaser.Geom.Rectangle(-w / 2, -h / 2, w, h),
+      Phaser.Geom.Rectangle.Contains,
+    );
+    this.bossSpeech.input!.cursor = 'pointer';
   }
 
   private startBossChatter(): void {
@@ -1203,7 +1265,8 @@ export class BattleScene extends Phaser.Scene {
     this.lastBossLineAt = this.time.now;
 
     this.tweens.killTweensOf(this.bossSpeech);
-    this.bossSpeech.setText(`「${line}」`).setY(388).setAlpha(0).setScale(0.9);
+    this.bossSpeech.setText(`「${line}」`).setY(388).setAlpha(0).setScale(0.9).setVisible(true);
+    this.syncBossSpeechInteractive();
     this.tweens.add({
       targets: this.bossSpeech,
       y: 370,
@@ -1212,6 +1275,7 @@ export class BattleScene extends Phaser.Scene {
       duration: 150,
       ease: 'Back.Out',
       onComplete: () => {
+        this.syncBossSpeechInteractive();
         this.tweens.add({
           targets: this.bossSpeech,
           alpha: 0,
@@ -1219,6 +1283,9 @@ export class BattleScene extends Phaser.Scene {
           delay: 1_650,
           duration: 260,
           ease: 'Sine.In',
+          onComplete: () => {
+            this.bossSpeech.disableInteractive();
+          },
         });
       },
     });
@@ -1509,6 +1576,7 @@ export class BattleScene extends Phaser.Scene {
     this.chatterTimer?.remove(false);
     this.clearVulnerabilityWindow();
     this.projectiles?.destroy();
+    this.glassShatter?.destroy();
     this.audio?.close();
     if (import.meta.env.DEV && this.testHook && window.__NOXCAT_TEST__ === this.testHook) {
       delete window.__NOXCAT_TEST__;
