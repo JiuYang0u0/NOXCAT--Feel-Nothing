@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 import { FALLBACK_BOSS } from '../../src/ai/fallbackBoss';
+import { MAIN_ATTACK_HITS_TO_WIN as HITS_TO_WIN } from '../../src/game/constants';
 
 test('small phone can reach the primary action without horizontal overflow', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'desktop-chromium', 'Small touch viewport coverage');
@@ -77,12 +78,15 @@ test('camera consent and result screens keep focus, statistics, and actions acce
   await expect(page.locator('canvas')).toBeVisible({ timeout: 5_000 });
   await page.waitForFunction(() => window.__NOXCAT_TEST__?.snapshot().state === 'DODGING');
   await page.evaluate(() => window.__NOXCAT_TEST__?.pauseAttacksForVisualTest());
-  for (let hit = 0; hit < 3; hit += 1) {
+  for (let hit = 1; hit <= HITS_TO_WIN; hit += 1) {
     await page.evaluate(() => window.__NOXCAT_TEST__?.damageBoss());
-    if (hit < 2) {
+    if (hit < HITS_TO_WIN) {
       await page.waitForFunction(
-        (expected) => (window.__NOXCAT_TEST__?.snapshot().mainAttackHits ?? 0) >= expected,
-        hit + 1,
+        (expected) => (
+          (window.__NOXCAT_TEST__?.snapshot().mainAttackHits ?? 0) >= expected
+          && window.__NOXCAT_TEST__?.snapshot().state === 'DODGING'
+        ),
+        hit,
       );
     }
   }
@@ -96,7 +100,7 @@ test('camera consent and result screens keep focus, statistics, and actions acce
   await expect(page.locator('[data-stat="time"]')).not.toBeEmpty();
   await expect(page.locator('[data-stat="graze"]')).toHaveText(/^\d+$/);
   await expect(page.locator('[data-stat="reflect"]')).toHaveText(/^\d+$/);
-  await expect(page.locator('[data-stat="hits"]')).toHaveText('3 / 3');
+  await expect(page.locator('[data-stat="hits"]')).toHaveText(`${HITS_TO_WIN} / ${HITS_TO_WIN}`);
   await expect(page.locator('.neutral-result')).toBeHidden();
   await expectMinimumTargetSize(page, '.result-actions button');
   await expectScreenContentsToFit(page, '.result-screen');
@@ -231,9 +235,9 @@ test('mobile start and result screens fill and follow the live visual viewport',
   await expect(page.locator('canvas')).toBeVisible({ timeout: 8_000 });
   await page.waitForFunction(() => window.__NOXCAT_TEST__?.snapshot().state === 'DODGING');
   await page.evaluate(() => window.__NOXCAT_TEST__?.pauseAttacksForVisualTest());
-  for (let hit = 1; hit <= 3; hit += 1) {
+  for (let hit = 1; hit <= 4; hit += 1) {
     await page.evaluate(() => window.__NOXCAT_TEST__?.damageBoss());
-    if (hit < 3) {
+    if (hit < 4) {
       await page.waitForFunction(
         (expectedHits) => (
           (window.__NOXCAT_TEST__?.snapshot().mainAttackHits ?? 0) >= expectedHits
@@ -279,9 +283,9 @@ test('installed PWA start and result screens use the standalone viewport path', 
   await expect(page.locator('canvas')).toBeVisible({ timeout: 8_000 });
   await page.waitForFunction(() => window.__NOXCAT_TEST__?.snapshot().state === 'DODGING');
   await page.evaluate(() => window.__NOXCAT_TEST__?.pauseAttacksForVisualTest());
-  for (let hit = 1; hit <= 3; hit += 1) {
+  for (let hit = 1; hit <= 4; hit += 1) {
     await page.evaluate(() => window.__NOXCAT_TEST__?.damageBoss());
-    if (hit < 3) {
+    if (hit < 4) {
       await page.waitForFunction(
         (expectedHits) => (
           (window.__NOXCAT_TEST__?.snapshot().mainAttackHits ?? 0) >= expectedHits

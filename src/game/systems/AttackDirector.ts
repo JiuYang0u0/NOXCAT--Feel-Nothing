@@ -18,6 +18,8 @@ import {
 } from '../patterns/paperRain';
 import {
   RETURNABLE_SAFE_LANE_HALF_WIDTH,
+  RETURNABLE_RECOVERY_MS,
+  runRecoveryReturnables,
   runReturnableBurst,
 } from '../patterns/returnableBurst';
 import { runRevisionHoming } from '../patterns/revisionHoming';
@@ -102,7 +104,7 @@ export const ATTACK_MIN_ACTIVE_MS: Readonly<Record<PatternId, number>> = {
 const ATTACK_ACTIVE_FLOOR_MS: Readonly<Record<PatternId, number>> = {
   paper_rain: 2_800, top_downpour: 2_600, pulse_barrage: 3_100,
   alternating_zipper: 3_200, comment_crossfire: 1_900, closing_walls: 2_600,
-  revision_homing: 3_300, returnable_burst: 3_400, deadline_beam: 520,
+  revision_homing: 3_500, returnable_burst: 4_000, deadline_beam: 2_700,
 };
 
 export interface AttackDirectorHooks {
@@ -147,6 +149,7 @@ export class AttackDirector {
   private deadlineBeams: readonly BeamLayout[] = [];
   private deadlineSafeSpot?: SafeSpotHint;
   private activePattern?: AttackPatternHandle;
+  private recoveryPattern?: AttackPatternHandle;
   private pacing: PacingScale | null = null;
 
   constructor(
@@ -281,6 +284,7 @@ export class AttackDirector {
       this.phaseElapsedMs += advanceMs;
       remainingMs -= advanceMs;
       if (phaseAtFrameStart === 'ACTIVE') this.activePattern?.update(advanceMs);
+      if (phaseAtFrameStart === 'RECOVERY') this.recoveryPattern?.update(advanceMs);
 
       if (this.phaseElapsedMs >= this.phaseDuration(step.pattern, step.durationMs, this.wavePhase)) {
         this.advanceWavePhase(step.pattern, step.intensity, playerLives);
@@ -334,6 +338,7 @@ export class AttackDirector {
   }
 
   private advanceStep(): void {
+    if (this.recoveryPattern) this.projectiles.releaseDangerousForExit();
     this.cancelPatternTimeline();
     const previousPattern = this.currentPattern;
     this.stepIndex += 1;
@@ -352,10 +357,14 @@ export class AttackDirector {
     const isBeam = pattern === 'deadline_beam';
     const telegraphScale = isBeam ? 1 : (this.pacing?.telegraphScale ?? 1);
     const recoveryScale = isBeam ? 1 : (this.pacing?.recoveryScale ?? 1);
+    // 回收波的 RECOVERY 固定為 RETURNABLE_RECOVERY_MS，ACTIVE 的預算必須扣掉
+    // 同一個值，否則每個回收波都會超出 AttackStep.durationMs 約 1.9 秒。
+    const scaledRecovery = this.hasRecoveryReturnables(pattern)
+      ? RETURNABLE_RECOVERY_MS
+      : Math.max(1, Math.round(recovery * recoveryScale));
     if (phase === 'TELEGRAPH') return Math.max(500, Math.round(telegraph * telegraphScale));
-    if (phase === 'RECOVERY') return Math.max(1, Math.round(recovery * recoveryScale));
+    if (phase === 'RECOVERY') return scaledRecovery;
     const scaledTelegraph = Math.max(500, Math.round(telegraph * telegraphScale));
-    const scaledRecovery = recovery * recoveryScale;
     const activeBudget = Math.max(1, Math.round(stepDurationMs - scaledTelegraph - scaledRecovery));
     const cadence = isBeam ? 1 : (this.pacing?.speedScale ?? 1);
     // 最後一命會再減速 13%，尾張文件仍需完整走完接近路徑。
@@ -386,6 +395,14 @@ export class AttackDirector {
       // momentum and leave beyond the viewport on its own. Emergency clears
       // (hit / vulnerability / cancellation) still use the explicit fade.
       this.projectiles.releaseDangerousForExit();
+      if (this.hasRecoveryReturnables(pattern)) {
+        this.recoveryPattern = runRecoveryReturnables({
+          rng: this.rng,
+          projectiles: this.projectiles,
+          waveIndex: this.volley,
+          player: this.playerPosition() ?? { x: 270, y: 700 },
+        }, () => this.hooks.onReturnableWindow?.());
+      }
     } else {
       this.advanceStep();
       return;
@@ -426,7 +443,7 @@ export class AttackDirector {
       case 'comment_crossfire':
         return runCommentCrossfire(context, this.commentLayout);
       case 'deadline_beam':
-        return runDeadlineBeam(context, this.deadlineBeams);
+        return runDeadlineBeam(context, this.deadlineBeams, this.deadlineSafeSpot);
       case 'closing_walls': {
         return runClosingWalls(
           context,
@@ -463,6 +480,12 @@ export class AttackDirector {
   private cancelPatternTimeline(): void {
     this.activePattern?.cancel();
     this.activePattern = undefined;
+    this.recoveryPattern?.cancel();
+    this.recoveryPattern = undefined;
+  }
+
+  private hasRecoveryReturnables(pattern: PatternId): boolean {
+    return pattern !== 'returnable_burst' && this.volley > 0 && this.volley % 2 === 0;
   }
 
   private minActiveMs(pattern: PatternId): number {

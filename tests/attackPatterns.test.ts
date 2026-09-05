@@ -30,6 +30,7 @@ import {
   planReturnableBurst,
   RETURNABLE_INTERACTION_GAP_MS,
   RETURNABLE_MIN_NEAR_PLANE_MS,
+  RETURNABLE_STAGGER_MS,
   RETURNABLE_OPENING_CLEAR_MS,
   RETURNABLE_PATH_SEPARATION,
   RETURNABLE_SAFE_LANE_HALF_WIDTH,
@@ -177,7 +178,7 @@ describe('attack pattern fairness geometry', () => {
     const laneX = 270;
     const projectiles = planPaperRain(new SeededRng(81), 3, 1, laneX);
 
-    expect(projectiles).toHaveLength(10);
+    expect(projectiles).toHaveLength(16);
     const nearTargets = projectiles.map((projectile) => projectile.perspectiveTarget?.x ?? projectile.x);
     expect(Math.min(...nearTargets)).toBeLessThan(46);
     expect(Math.max(...nearTargets)).toBeGreaterThan(494);
@@ -234,8 +235,8 @@ describe('attack pattern fairness geometry', () => {
     const combinations = first.map((plan) => plan.layout.rays.map((ray) => ray.direction).sort().join(','));
     expect(new Set(combinations).size).toBeGreaterThanOrEqual(6);
     expect(new Set(first.flatMap((plan) => plan.layout.rays.map((ray) => ray.direction))).size).toBe(4);
-    expect(first.some((plan) => plan.projectiles.length === 2)).toBe(true);
-    expect(first.some((plan) => plan.projectiles.length === 3)).toBe(true);
+    expect(first.some((plan) => plan.projectiles.length === 4)).toBe(true);
+    expect(first.some((plan) => plan.projectiles.length === 6)).toBe(true);
     const angles = first.flatMap((plan) => plan.layout.rays.map((ray) => ((ray.angle % 180) + 180) % 180));
     expect(angles.some((angle) => angle < 10 || angle > 170)).toBe(true);
     expect(angles.some((angle) => angle > 30 && angle < 60)).toBe(true);
@@ -243,7 +244,7 @@ describe('attack pattern fairness geometry', () => {
     expect(new Set(angles.map((angle) => Math.round(angle / 15))).size).toBeGreaterThanOrEqual(10);
     for (const plan of first) {
       expect(new Set(plan.layout.rays.map((ray) => ray.direction)).size).toBeGreaterThanOrEqual(2);
-      expect(new Set(plan.layout.rays.map((ray) => ray.direction)).size).toBe(plan.projectiles.length);
+      expect(new Set(plan.layout.rays.map((ray) => ray.direction)).size).toBe(plan.projectiles.length / 2);
       for (const card of plan.projectiles) {
         expect(card.perspectiveDurationMs! * PROJECTILE_CONTACT_DEPTH).toBeGreaterThanOrEqual(550);
       }
@@ -263,7 +264,7 @@ describe('attack pattern fairness geometry', () => {
     const initial = [...spawned];
     expect(initial.length).toBeGreaterThanOrEqual(2);
     expect(new Set(initial.map((card) => `${card.perspectiveOrigin!.x},${card.perspectiveOrigin!.y}`)).size).toBe(initial.length);
-    handle.update(1_000);
+    handle.update(459);
     handle.cancel();
     handle.update(10_000);
     expect(spawned).toEqual(initial);
@@ -350,13 +351,13 @@ describe('attack pattern fairness geometry', () => {
     const topPlayer = { x: 270, y: 430 };
     const plan = planReturnableBurst(new SeededRng(33), 3, 0, 1, topPlayer);
 
-    expect(plan.projectiles).toHaveLength(5);
+    expect(plan.projectiles).toHaveLength(8);
     expect(plan.returnableIndex).toBeGreaterThanOrEqual(1);
-    expect(plan.returnableIndices).toEqual([plan.openingProjectiles.length]);
-    expect(plan.projectiles.filter((projectile) => projectile.kind === 'returnable')).toHaveLength(1);
-    expect(plan.openingProjectiles).toHaveLength(4);
+    expect(plan.returnableIndices).toEqual([6, 7]);
+    expect(plan.projectiles.filter((projectile) => projectile.kind === 'returnable')).toHaveLength(2);
+    expect(plan.openingProjectiles).toHaveLength(6);
     expect(plan.openingProjectiles.every((projectile) => projectile.kind === 'paper')).toBe(true);
-    expect(plan.returnableProjectiles).toHaveLength(1);
+    expect(plan.returnableProjectiles).toHaveLength(2);
     expect(plan.returnableProjectiles.every((projectile) => (
       projectile.kind === 'returnable'
     ))).toBe(true);
@@ -386,7 +387,7 @@ describe('attack pattern fairness geometry', () => {
 
     const edgePlan = planReturnableBurst(new SeededRng(34), 3, 0, 1, { x: 46, y: 430 });
     expect(edgePlan.safeLaneX).toBe(70);
-    expect(edgePlan.projectiles).toHaveLength(5);
+    expect(edgePlan.projectiles).toHaveLength(8);
     expect(edgePlan.interactionLaneX).toBe(190);
     expect(edgePlan.openingProjectiles.every((paper) => (
       paper.x - edgePlan.interactionLaneX >= RETURNABLE_PATH_SEPARATION
@@ -403,7 +404,7 @@ describe('attack pattern fairness geometry', () => {
   it('spawns homing revisions far enough away to prevent a near-boundary hit', () => {
     const projectiles = planRevisionHoming(new SeededRng(5), 3, 1);
 
-    expect(projectiles).toHaveLength(3);
+    expect(projectiles).toHaveLength(4);
     for (const projectile of projectiles) {
       const radius = projectile.radius ?? 18;
       expect(hasMinimumReactionDistance(
@@ -450,7 +451,7 @@ describe('attack pattern fairness geometry', () => {
     const gapPath = wave.formations.map((formation) => formation.safeGapY);
     const deltas = gapPath.slice(1).map((gap, index) => gap - gapPath[index]!);
 
-    expect(wave.formations).toHaveLength(4);
+    expect(wave.formations).toHaveLength(5);
     expect(wave.formations[0]?.atMs).toBe(0);
     expect(wave.formations.at(-1)?.atMs).toBe(3_600);
     expect(gapPath.at(0)).toBe(wave.startGapY);
@@ -483,24 +484,35 @@ describe('attack pattern fairness geometry', () => {
     }
   });
 
-  it('sends both closing walls through a dangerous position in the lower dodge area', () => {
-    // Review 重現：玩家停在 y=878 的警示區，舊文件牆整波都只穿過上方。
-    const wave = planClosingWallWave(new SeededRng(12), 3, 1, 739.2, 5_200);
-    for (const side of [-1, 1]) {
-      const canHit = wave.formations.some((formation) => formation.projectiles.some((config) => {
-        if (Math.sign(config.vx) !== side) return false;
-        const trajectory = createTunnelTrajectory(
-          { x: config.x, y: config.y }, { x: config.vx, y: config.vy },
-          config.radius ?? 27, config.perspectiveTarget,
-          config.perspectiveDurationMs, config.perspectiveOrigin,
-        );
-        const velocity = initialProjectileExitVelocity(trajectory, { x: config.vx, y: config.vy });
-        const seconds = (270 - trajectory.nearPoint.x) / velocity.x;
-        const crossingY = trajectory.nearPoint.y + velocity.y * seconds;
-        return seconds >= 0 && seconds < 1
-          && Math.abs(crossingY - 878) <= PLAYER_HIT_RADIUS + (config.radius ?? 27);
-      }));
-      expect(canHit, `wall direction ${side} never threatens the lower area`).toBe(true);
+  it('leaves no safe pocket outside the closing wall opening', () => {
+    // Review 重現：移動區從 884 縮到 774 後，固定兩層的牆在缺口靠邊時最外側
+    // 那列之外仍留著打不到的安全口袋，玩家整波賴在那裡就不必穿缺口。
+    const WALL_REACH = PLAYER_HIT_RADIUS + 27;
+    for (const seed of [1, 12, 44, 144]) {
+      for (const intensity of [1, 2, 3] as const) {
+        for (const startY of [PLAYER_MIN_Y, 602, PLAYER_MAX_Y]) {
+          const wave = planClosingWallWave(new SeededRng(seed), intensity, 1, startY, 5_200);
+          for (const formation of wave.formations) {
+            for (const side of [-1, 1]) {
+              const label = `seed ${seed} intensity ${intensity} start ${startY} side ${side}`;
+              const offsets = [...new Set(formation.projectiles
+                .filter((config) => Math.sign(config.y - formation.safeGapY) === side)
+                .map((config) => Math.abs(config.y - formation.safeGapY)))]
+                .sort((a, b) => a - b);
+              expect(offsets.length, `${label}: 這一側完全沒有文件列`).toBeGreaterThan(0);
+              // 相鄰列的碰撞覆蓋必須相連，中間不能夾出可站的縫。
+              for (let index = 1; index < offsets.length; index += 1) {
+                expect(offsets[index]! - offsets[index - 1]!, `${label}: 兩列之間留縫`)
+                  .toBeLessThanOrEqual(WALL_REACH * 2);
+              }
+              // 最外側那列必須蓋過移動區邊緣，否則牆外還有安全口袋。
+              const edge = side < 0 ? PLAYER_MIN_Y : PLAYER_MAX_Y;
+              expect(offsets.at(-1)! + WALL_REACH, `${label}: 最外列蓋不到移動區邊緣`)
+                .toBeGreaterThanOrEqual(Math.abs(edge - formation.safeGapY));
+            }
+          }
+        }
+      }
     }
   });
 
@@ -659,7 +671,8 @@ describe('AttackDirector wave pacing', () => {
           expect((target.x - warning.from.x) * dy - (target.y - warning.from.y) * dx).toBeCloseTo(0, 7);
         });
       }
-      director.update(4_500 - telegraphMs, 3);
+      while (director.currentPhase !== 'RECOVERY') director.update(1, 3);
+      while (director.currentPhase === 'RECOVERY') director.update(1, 3);
     }
     expect(commentWave).toBe(8);
   });
@@ -703,42 +716,42 @@ describe('AttackDirector wave pacing', () => {
       - ATTACK_RECOVERY_MS.paper_rain;
     director.update(paperActiveMs - 146, 3);
     expect(director.currentPhase).toBe('ACTIVE');
-    expect(spawned).toHaveLength(8);
+    expect(spawned).toHaveLength(12);
     expect(clears).toBe(0);
     expect(releases).toBe(0);
     director.update(1, 3);
     expect(director.currentPhase).toBe('RECOVERY');
-    expect(spawned).toHaveLength(8);
+    expect(spawned).toHaveLength(12);
     expect(clears).toBe(0);
     expect(releases).toBe(1);
     director.update(ATTACK_RECOVERY_MS.paper_rain - 1, 3);
-    expect(spawned).toHaveLength(8);
+    expect(spawned).toHaveLength(12);
     director.update(1, 3);
     expect(director.currentPhase).toBe('TELEGRAPH');
     expect(director.currentPattern).toBe('returnable_burst');
-    expect(spawned).toHaveLength(8);
+    expect(spawned).toHaveLength(12);
     director.update(ATTACK_TELEGRAPH_MS.returnable_burst - 1, 3);
-    expect(spawned).toHaveLength(8);
+    expect(spawned).toHaveLength(12);
     director.update(1, 3);
     expect(director.currentPhase).toBe('ACTIVE');
     // The returnable pattern teaches with a front-to-back paper queue first.
-    expect(spawned.slice(8)).toHaveLength(1);
+    expect(spawned.slice(12)).toHaveLength(1);
     director.update(99, 3);
-    expect(spawned.slice(8)).toHaveLength(1);
+    expect(spawned.slice(12)).toHaveLength(1);
     director.update(1, 3);
-    expect(spawned.slice(8)).toHaveLength(2);
-    expect(spawned.slice(8).every((projectile) => projectile.kind === 'paper')).toBe(true);
+    expect(spawned.slice(12)).toHaveLength(2);
+    expect(spawned.slice(12).every((projectile) => projectile.kind === 'paper')).toBe(true);
     director.update(RETURNABLE_OPENING_CLEAR_MS - 101, 3);
-    expect(spawned.slice(8)).toHaveLength(3);
-    expect(spawned.slice(8).every((projectile) => projectile.kind === 'paper')).toBe(true);
+    expect(spawned.slice(12)).toHaveLength(5);
+    expect(spawned.slice(12).every((projectile) => projectile.kind === 'paper')).toBe(true);
     expect(clears).toBe(0);
     director.update(1, 3);
     expect(clears).toBe(0);
     expect(releases).toBe(2);
     director.update(RETURNABLE_INTERACTION_GAP_MS - 1, 3);
-    expect(spawned.slice(8)).toHaveLength(3);
+    expect(spawned.slice(12)).toHaveLength(5);
     director.update(1, 3);
-    expect(spawned.slice(8)).toHaveLength(4);
+    expect(spawned.slice(12)).toHaveLength(6);
     expect(spawned.at(-1)?.kind).toBe('returnable');
     expect(phases).toEqual([
       'TELEGRAPH',
@@ -772,13 +785,13 @@ describe('AttackDirector wave pacing', () => {
     expect(spawned).toHaveLength(1);
     expect(spawned.every((projectile) => projectile.kind === 'paper')).toBe(true);
     handle.update(RETURNABLE_OPENING_CLEAR_MS - 1);
-    expect(spawned).toHaveLength(4);
+    expect(spawned).toHaveLength(6);
     handle.cancel();
     handle.update(10_000);
 
     expect(handle.cancelled).toBe(true);
     expect(handle.finished).toBe(true);
-    expect(spawned).toHaveLength(4);
+    expect(spawned).toHaveLength(6);
   });
 
   it('keeps delayed returnables reachable in the shortest valid ACTIVE window', () => {
@@ -797,7 +810,7 @@ describe('AttackDirector wave pacing', () => {
       },
     } as unknown as ProjectileSystem;
     const runtime = createPatternRuntime();
-    const activeDurationMs = 3_000;
+    const activeDurationMs = 4_000;
     const handle = runReturnableBurst({
       ...runtime,
       rng: new SeededRng(18),
@@ -818,10 +831,14 @@ describe('AttackDirector wave pacing', () => {
     handle.update(1);
     expect(liveDangerous).toHaveLength(1);
     expect(liveDangerous.every((projectile) => projectile.kind === 'returnable')).toBe(true);
-    const returnables = spawned.slice(4);
+    handle.update(RETURNABLE_STAGGER_MS - 1);
+    expect(liveDangerous).toHaveLength(1);
+    handle.update(1);
+    expect(liveDangerous).toHaveLength(2);
+    const returnables = spawned.filter((card) => card.kind === 'returnable');
     for (const projectile of returnables) {
       expect(projectile.perspectiveDurationMs).toBeLessThanOrEqual(
-        activeDurationMs - RETURNABLE_WINDOW_START_MS - RETURNABLE_MIN_NEAR_PLANE_MS,
+        activeDurationMs - RETURNABLE_WINDOW_START_MS - RETURNABLE_STAGGER_MS - RETURNABLE_MIN_NEAR_PLANE_MS,
       );
     }
   });

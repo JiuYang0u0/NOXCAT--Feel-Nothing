@@ -35,8 +35,17 @@ SETUP = """async ({pattern, start, speed, seed}) => {
     s.director.setPacingScale({speedScale:speed,telegraphScale:speed>1?0.7:1,
         recoveryScale:1,vulnerableScale:1,combatScale:1,urgency:0,relief:0});
     s.director.start(); s.qaTime=0; s.qaStart=start; s.qaHomingMoved=false;
-    s.qaStats={pattern,start,speed,seed,peak:0,spawned:0};
-    s.hud.setStateMessage('離開紅色區域', true);
+    s.qaStats={pattern,start,speed,seed,peak:0,spawned:0,dropped:0};
+    if(!s.qaOriginalSpawn) {
+        s.qaOriginalSpawn=s.projectiles.spawn.bind(s.projectiles);
+        s.projectiles.spawn=(config)=>{
+            const card=s.qaOriginalSpawn(config);
+            s.qaStats.spawned++;
+            if(!card) s.qaStats.dropped++;
+            return card;
+        };
+    }
+    s.hud.setStateMessage(pattern==='closing_walls'?'跟著缺口移動':'離開紅色區域', pattern!=='closing_walls');
     s.hud.update(s.session.snapshot(), null);
     return {lane:s.director.currentSafeLane,spot:s.director.currentSafeSpot};
 }"""
@@ -61,7 +70,7 @@ STEP = """({frames,fps}) => {
         }
         const previous={x:s.noxcat.x,y:s.noxcat.y};
         s.noxcat.updateMotion(dt); s.session.advanceTime(dt*1000);
-        s.handleBeamCollisions(previous,dt*1000);
+        s.handleBeamCollisions(previous);
         s.projectiles.update(dt,s.noxcat,1);
         s.handleProjectileCollisions(previous,dt*1000);
         s.session.setEnergyForDebug(0);
@@ -106,12 +115,13 @@ def verify_waves(browser, url, engine, output, capture_only=False):
     checked = 0
     for fps in ([] if capture_only else [30, 60, 120]):
         for speed in [1, 1.75]:
-            for start in [{"x": 46, "y": 430}, {"x": 270, "y": 657}, {"x": 494, "y": 884}]:
+            for start in [{"x": 46, "y": 430}, {"x": 270, "y": 657}, {"x": 494, "y": 774}]:
                 for pattern in PATTERNS:
                     page.evaluate(SETUP, {"pattern": pattern, "start": start, "speed": speed, "seed": 31})
                     result = page.evaluate(STEP, {"frames": fps*10, "fps": fps})
                     assert result["lives"] == 3 and result.get("done"), result
                     assert result["peak"] > 0, result
+                    assert result["dropped"] == 0, result
                     checked += 1
         print(json.dumps({"engine": engine, "fps": fps, "waves": checked, "status": "pass"}), flush=True)
     for pattern in PATTERNS:
@@ -127,7 +137,7 @@ def verify_waves(browser, url, engine, output, capture_only=False):
 def verify_win(browser, url, engine, output):
     context, page, errors = open_game(browser, url)
     page.evaluate("window.__NOXCAT_TEST__.pauseAttacksForVisualTest()")
-    for hit in range(1, 4):
+    for hit in range(1, 5):
         page.wait_for_function("['DODGING','VULNERABLE'].includes(window.__NOXCAT_TEST__?.snapshot().state)")
         page.evaluate("window.__NOXCAT_TEST__.fillEnergy()")
         state = page.evaluate("({visual:window.__NOXCAT_TEST__.visualSnapshot(),view:window.__NOXCAT_TEST__.viewportSnapshot()})")

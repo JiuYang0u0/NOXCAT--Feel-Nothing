@@ -99,7 +99,7 @@ export function planPulseBarrage(
   safeLaneX: number,
 ): PulseBarragePlan {
   const pulseCount = intensity + 1;
-  const cardsPerPulse = 5 + intensity;
+  const cardsPerPulse = 7 + intensity;
   const depthClockScale = Math.max(0.1, speedScale);
   const spans = hostileColumnSpans(safeLaneX);
   const shares = shareCardsAcrossSpans(spans, cardsPerPulse);

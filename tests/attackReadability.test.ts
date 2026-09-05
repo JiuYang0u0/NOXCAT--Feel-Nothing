@@ -84,7 +84,7 @@ describe('readable attack directions and complete beats', () => {
     const handle = pattern === 'pulse_barrage' ? runPulseBarrage(context, 270) : runAlternatingZipper(context, 270);
     for (elapsedMs = 10; elapsedMs <= durationMs; elapsedMs += 10) handle.update(10);
     expect(handle.finished).toBe(true);
-    expect(emitted).toHaveLength(pattern === 'pulse_barrage' ? 32 : 8);
+    expect(emitted).toHaveLength(pattern === 'pulse_barrage' ? 40 : 11);
     expect(Math.max(...emitted.map(({ atMs, card }) => atMs + card.perspectiveDurationMs!)))
       .toBeLessThanOrEqual(durationMs - 100);
   });

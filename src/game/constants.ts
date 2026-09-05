@@ -7,9 +7,13 @@ export const DODGE_AREA_TOP = 370;
 export const PLAYER_MIN_X = 46;
 export const PLAYER_MAX_X = GAME_WIDTH - 46;
 export const PLAYER_MIN_Y = DODGE_AREA_TOP + 60;
-export const PLAYER_MAX_Y = GAME_HEIGHT - 76;
+// 隱形底線留在 HUD 上方；中心再向上留出完整果凍身體的空間。
+export const DODGE_AREA_BOTTOM = GAME_HEIGHT - 110;
+export const PLAYER_MAX_Y = DODGE_AREA_BOTTOM - 76;
 
 export const ROUND_DURATION_MS = 90_000;
+// 預期擊敗 Boss 的時間與整局倒數分開，保留失誤後重整的時間。
+export const TARGET_VICTORY_MS = 60_000;
 export const PLAYER_MAX_LIVES = 3;
 export const PLAYER_HIT_RADIUS = 18;
 export const PLAYER_GRAZE_RADIUS = 43;
@@ -26,21 +30,23 @@ export const MAX_FOLLOW_SPEED = 1_500;
 export const REFLECT_MIN_SPEED = 520;
 
 export const ENERGY_MAX = 100;
-// ~5× the original graze / reflect / wave / camera rates so a 90-second
-// round can fill FEEL NOTHING from a handful of grazes.
-export const ENERGY_PER_GRAZE = 40;
-export const ENERGY_PER_REFLECT = 90;
-export const ENERGY_PER_PERFECT_WAVE = 60;
+// 文件密度提高後以約三波充滿為基準，反彈與相機提供額外加成。
+export const ENERGY_PER_GRAZE = 10;
+export const ENERGY_PER_REFLECT = 16;
+export const ENERGY_PER_WAVE = 24;
+export const ENERGY_PER_PERFECT_WAVE = 10;
 export const ENERGY_LOSS_ON_HIT = 20;
-export const NEUTRAL_ENERGY_PER_SECOND = 7;
+export const NEUTRAL_ENERGY_PER_SECOND = 1.4;
 export const NEUTRAL_BONUS_THRESHOLD = 88;
 export const FEEL_DETECTED_THRESHOLD = 70;
 export const FEEL_DETECTED_HOLD_MS = 250;
 export const FEEL_DETECTED_COOLDOWN_MS = 600;
 
-export const BOSS_MAX_HP = 100;
+export const BOSS_MAX_HP = 132;
 export const MAIN_ATTACK_DAMAGE = 34;
-export const REFLECT_DAMAGE = 6;
+// 勝利所需的主攻擊命中數；HUD、結算與節奏調度共用同一來源。
+export const MAIN_ATTACK_HITS_TO_WIN = Math.ceil(BOSS_MAX_HP / MAIN_ATTACK_DAMAGE);
+export const REFLECT_DAMAGE = 3;
 
 export const AIM_MAX_PULL = 160;
 export const AIM_MIN_PULL = 36;

@@ -99,7 +99,12 @@ describe('seeded attack rounds', () => {
       expect(director.currentPattern).toBe(current);
       expect(director.currentPhase).toBe('RECOVERY');
       expect(emitted.has(current)).toBe(true);
-      director.update(20, 3);
+      // 每兩波新增反彈休息段，須完整走完再開始下一個預警。
+      let recoveryMs = 0;
+      while (director.currentPhase === 'RECOVERY' && recoveryMs < 3_000) {
+        director.update(1, 3);
+        recoveryMs++;
+      }
       expect(director.currentPhase).toBe('TELEGRAPH');
       expect(director.currentPattern).not.toBe(current);
     }

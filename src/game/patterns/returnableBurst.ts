@@ -1,6 +1,7 @@
 import type { SeededRng } from '../../utils/rng';
 import { PLAYER_HIT_RADIUS, PLAYER_MIN_Y, PLAYER_MAX_Y } from '../constants';
 import type { ProjectileConfig } from '../entities/Projectile';
+import type { ProjectileSystem } from '../systems/ProjectileSystem';
 import {
   clamp,
   clampPlayerPosition,
@@ -24,6 +25,8 @@ export const RETURNABLE_INTERACTION_GAP_MS = 240;
 export const RETURNABLE_WINDOW_START_MS = RETURNABLE_OPENING_CLEAR_MS
   + RETURNABLE_INTERACTION_GAP_MS;
 export const RETURNABLE_MIN_NEAR_PLANE_MS = 650;
+export const RETURNABLE_STAGGER_MS = 1_000;
+export const RETURNABLE_RECOVERY_MS = 2_300;
 export const RETURNABLE_PATH_SEPARATION = 96;
 const RETURNABLE_PROJECTILE_RADIUS = 22;
 const PAPER_PROJECTILE_RADIUS = 18;
@@ -56,7 +59,7 @@ export function planReturnableBurst(
 ): ReturnableBurstPlan {
   const player = clampPlayerPosition(playerPosition);
   const safeLaneX = clamp(player?.x ?? rng.range(150, 390), 70, 470);
-  // Keep one marked document in a dedicated, reachable corridor. Opening
+  // Keep marked documents in a dedicated, reachable corridor. Opening
   // papers take the opposite, roomier side whenever possible. At the extreme
   // edges both stages share the available side but retain a wide separation.
   // Timeline staging below releases every paper before the marked card.
@@ -72,7 +75,7 @@ export function planReturnableBurst(
     45,
     495,
   );
-  const openingCount = intensity === 3 ? 4 : 3;
+  const openingCount = intensity === 3 ? 6 : 5;
   let openingMinX = interactionSide < 0
     ? safeLaneX + PAPER_LANE_EXCLUSION
     : 45;
@@ -119,7 +122,7 @@ export function planReturnableBurst(
     x: interactionLaneX,
     y: clamp(player?.y ?? 720, PLAYER_MIN_Y + 40, PLAYER_MAX_Y - 40),
   };
-  const returnableProjectiles: readonly ProjectileConfig[] = [{
+  const returnableProjectiles: readonly ProjectileConfig[] = Array.from({ length: 2 }, (): ProjectileConfig => ({
     kind: 'returnable',
     x: interactionLaneX,
     y: RETURNABLE_WARNING_Y,
@@ -130,9 +133,9 @@ export function planReturnableBurst(
     perspectiveOrigin: { x: interactionLaneX, y: FALLING_ATTACK_ORIGIN_Y },
     perspectiveTarget: returnableTarget,
     perspectiveDurationMs: 1_450 + Math.round(rng.range(-40, 40)),
-  }];
+  }));
   const returnableIndex = openingProjectiles.length;
-  const returnableIndices = [returnableIndex];
+  const returnableIndices = returnableProjectiles.map((_, index) => returnableIndex + index);
   const projectiles = [...openingProjectiles, ...returnableProjectiles];
   return {
     safeLaneX,
@@ -161,7 +164,7 @@ export function runReturnableBurst(
   // interaction beat. There are no ordinary papers in this second stage.
   const maxReturnablePerspectiveMs = Math.max(
     650,
-    context.durationMs - RETURNABLE_WINDOW_START_MS - RETURNABLE_MIN_NEAR_PLANE_MS,
+    context.durationMs - RETURNABLE_WINDOW_START_MS - RETURNABLE_STAGGER_MS - RETURNABLE_MIN_NEAR_PLANE_MS,
   );
   const returnableProjectiles = plan.returnableProjectiles.map((config) => ({
     ...config,
@@ -179,12 +182,40 @@ export function runReturnableBurst(
       // gameplay ownership is already removed for the marked-card lesson.
       emit: () => context.projectiles.releaseDangerousForExit(),
     },
-    {
-      atMs: RETURNABLE_WINDOW_START_MS,
+    ...returnableProjectiles.map((config, index) => ({
+      atMs: RETURNABLE_WINDOW_START_MS + index * RETURNABLE_STAGGER_MS,
       emit: () => {
-        spawnConfigs(context.projectiles, returnableProjectiles);
+        spawnConfigs(context.projectiles, [config]);
+        if (index === 0) onReturnablesSpawned?.();
+      },
+    })),
+  ]);
+}
+
+/** 波次間僅掉落可反彈文件，保留獨立接近時間，避免和下一招的危險區重疊。 */
+/**
+ * RECOVERY 期的回收卡只需要亂數、彈幕池、波次與一個玩家座標快照，
+ * 不需要完整的 AttackPatternContext（也就不必把 {x, y} 強轉成 Noxcat）。
+ */
+export interface RecoveryReturnableContext {
+  readonly rng: SeededRng;
+  readonly projectiles: ProjectileSystem;
+  readonly waveIndex: number;
+  /** 進入 RECOVERY 當下的玩家位置快照，用來決定回收卡的瞄準走廊。 */
+  readonly player?: PlayerPosition;
+}
+
+export function runRecoveryReturnables(
+  context: RecoveryReturnableContext,
+  onReturnablesSpawned?: () => void,
+): AttackPatternHandle {
+  const plan = planReturnableBurst(context.rng, 1, context.waveIndex, 1, context.player);
+  return createPatternTimeline(RETURNABLE_RECOVERY_MS,
+    plan.returnableProjectiles.slice(0, 1).map((config) => ({
+      atMs: 240,
+      emit: () => {
+        context.projectiles.spawn({ ...config, perspectiveDurationMs: 1_250 });
         onReturnablesSpawned?.();
       },
-    },
-  ]);
+    })));
 }

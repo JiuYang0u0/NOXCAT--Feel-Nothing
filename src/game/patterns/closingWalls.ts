@@ -23,8 +23,21 @@ const WALL_EXCLUSION_FROM_GAP = CLOSING_WALL_SAFE_GAP_HALF_HEIGHT
   + WALL_PROJECTILE_RADIUS
   + PLAYER_HIT_RADIUS
   + 30;
+// 一列文件能打到的玩家中心範圍（文件半徑 + 玩家碰撞半徑）。
+const WALL_REACH_MARGIN = WALL_PROJECTILE_RADIUS + PLAYER_HIT_RADIUS;
+const WALL_CLEARANCE_JITTER = 4;
+// 相鄰兩列的間距；小於兩倍 WALL_REACH_MARGIN，確保外推時覆蓋連續不留縫。
+const WALL_LAYER_SPACING = 58;
+// 覆蓋到移動區邊緣通常只要 1~3 列；上限純粹是文件池的保險。
+const MAX_WALL_LAYERS = 3;
 const WALL_NEAR_LEFT_X = 145;
 const WALL_NEAR_RIGHT_X = 395;
+
+/** 整波缺口的位移量。 */
+export function closingWallGapTravel(intensity: AttackIntensity): number {
+  // 下方移動區較矮，整波只移動其高度的 10%，保留重疊文件之間的通路。
+  return Math.min(44 + intensity * 10, (PLAYER_MAX_Y - PLAYER_MIN_Y) * 0.1);
+}
 
 export interface ClosingWallsPlan {
   readonly safeGapY: number;
@@ -51,12 +64,18 @@ export function planClosingWalls(
   const speed = (180 + intensity * 20) * speedScale;
   // 以缺口向外排列，避免縮小移動區後只剩上方文件列。
   // 加上整波位移量，確保舊文件還在場上時也不會穿過新的缺口。
-  const clearance = WALL_EXCLUSION_FROM_GAP + gapTravel + rng.range(0, 4);
+  const clearance = WALL_EXCLUSION_FROM_GAP + gapTravel + rng.range(0, WALL_CLEARANCE_JITTER);
   const projectiles: ProjectileConfig[] = [];
-  const layers = intensity === 1 ? 1 : 2;
-  for (let layer = 0; layer < layers; layer += 1) {
-    for (const verticalSide of [-1, 1]) {
-      const rowY = gapY + verticalSide * (clearance + layer * 58);
+  // 固定層數會在移動區縮短後失準：缺口靠邊時最外側那列之外還留著打不到的
+  // 安全口袋，玩家可以整波賴在那裡不穿缺口。改成每側往外補到覆蓋範圍蓋過
+  // 移動區邊緣為止，既不留口袋，也不會多發落在區外的文件。
+  for (const verticalSide of [-1, 1]) {
+    const edgeDistance = Math.abs(
+      (verticalSide < 0 ? PLAYER_MIN_Y : PLAYER_MAX_Y) - gapY,
+    );
+    for (let layer = 0; layer < MAX_WALL_LAYERS; layer += 1) {
+      const offset = clearance + layer * WALL_LAYER_SPACING;
+      const rowY = gapY + verticalSide * offset;
       for (const fromLeft of [true, false]) {
         projectiles.push({
           kind: 'wall',
@@ -77,6 +96,7 @@ export function planClosingWalls(
           perspectiveDurationMs: Math.max(1_100, Math.round(1_550 / Math.max(0.1, speedScale))),
         });
       }
+      if (offset + WALL_REACH_MARGIN >= edgeDistance) break;
     }
   }
   return { safeGapY: gapY, projectiles };
@@ -109,10 +129,9 @@ export function planClosingWallWave(
   const minimumGapY = PLAYER_MIN_Y + CLOSING_WALL_SAFE_GAP_HALF_HEIGHT;
   const clampedStart = clamp(startGapY, minimumGapY, maximumGapY);
   const direction = rng.int(0, 1) === 0 ? -1 : 1;
-  // 下方移動區較矮，整波只移動其高度的 10%，保留重疊文件之間的通路。
-  const travel = Math.min(44 + intensity * 10, (PLAYER_MAX_Y - PLAYER_MIN_Y) * 0.1);
+  const travel = closingWallGapTravel(intensity);
   const endGapY = clamp(clampedStart + direction * travel, minimumGapY, maximumGapY);
-  const formationCount = intensity === 1 ? 3 : 4;
+  const formationCount = intensity === 1 ? 4 : 5;
   // 減速時也按實際接近時間預留尾段，避免最後一層尚未進場就被收尾。
   const tailMs = Math.max(1_600, Math.round(1_550 / Math.max(0.1, speedScale)) + 50);
   const lastEmissionMs = Math.max(0, durationMs - tailMs);
@@ -140,14 +159,35 @@ export function runClosingWalls(
     startGapY,
     context.durationMs,
   );
-  return createPatternTimeline(
+  const timeline = createPatternTimeline(
     context.durationMs,
     wave.formations.map((formation) => ({
       atMs: formation.atMs,
       emit: () => {
-        onGapMoved?.(formation.safeGapY);
         spawnConfigs(context.projectiles, formation.projectiles);
       },
     })),
   );
+  let elapsedMs = 0;
+  let lastReportedGapY = wave.startGapY;
+  onGapMoved?.(wave.startGapY);
+  return {
+    get cancelled() { return timeline.cancelled; },
+    get finished() { return timeline.finished; },
+    update(deltaMs) {
+      if (timeline.cancelled || !Number.isFinite(deltaMs) || deltaMs <= 0) return;
+      elapsedMs += deltaMs;
+      const progress = clamp(elapsedMs / Math.max(1, wave.formations.at(-1)!.atMs), 0, 1);
+      const eased = progress * progress * (3 - 2 * progress);
+      // 整波位移量已列入文件避讓距離；提示可連續移動，不隨發射批次跳格。
+      // 缺口停住後（含 timeline 結束）不再回報，省下每幀重建 Graphics 的成本。
+      const gapY = wave.startGapY + (wave.endGapY - wave.startGapY) * eased;
+      if (Math.abs(gapY - lastReportedGapY) > 0.01) {
+        lastReportedGapY = gapY;
+        onGapMoved?.(gapY);
+      }
+      timeline.update(deltaMs);
+    },
+    cancel() { timeline.cancel(); },
+  };
 }

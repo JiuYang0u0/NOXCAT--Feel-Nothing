@@ -35,7 +35,7 @@ export function planPaperRain(
 ): ProjectileConfig[] {
   // A whole AttackStep is one wave. Keep enough documents in that single
   // formation for graze-based players to charge without continuous spawning.
-  const count = 7 + intensity;
+  const count = 10 + intensity * 2;
   const wideLaneCentres = columnsOutsideLane(safeLaneCentre, PAPER_LANE_EXCLUSION, count);
   const durationBands = [1_650, 1_950, 2_350, 2_750] as const;
   return Array.from({ length: count }, (_, index) => {

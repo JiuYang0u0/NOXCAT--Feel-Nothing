@@ -305,8 +305,9 @@ export class Noxcat extends Phaser.GameObjects.Container {
     const pull = Math.min(Math.hypot(dx, dy), AIM_MAX_PULL);
     this.aimPull01 = pull / AIM_MAX_PULL;
     this.aimAngle = Math.atan2(dy, dx);
-    this.x = anchorX + Math.cos(this.aimAngle) * pull;
-    this.y = anchorY + Math.sin(this.aimAngle) * pull;
+    this.x = Phaser.Math.Clamp(anchorX + Math.cos(this.aimAngle) * pull, PLAYER_MIN_X, PLAYER_MAX_X);
+    // 拉力仍以手指距離計算；角色本體不能被拉進底部 HUD。
+    this.y = Phaser.Math.Clamp(anchorY + Math.sin(this.aimAngle) * pull, PLAYER_MIN_Y, PLAYER_MAX_Y);
     this.visual.rotation = this.aimAngle;
     this.visual.scaleX = Phaser.Math.Linear(1, 0.72, this.aimPull01);
     this.visual.scaleY = Phaser.Math.Linear(1, 1.24, this.aimPull01);

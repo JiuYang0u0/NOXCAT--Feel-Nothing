@@ -16,6 +16,7 @@ export type AssetKey =
   | 'noxcat.hit'
   | 'boss.crt'
   | 'projectile.paper'
+  | 'projectile.wall'
   | 'projectile.returnable';
 
 const textureKeys: Record<AssetKey, string> = {
@@ -25,6 +26,7 @@ const textureKeys: Record<AssetKey, string> = {
   'noxcat.hit': 'noxcat-runtime-hit',
   'boss.crt': 'boss-runtime-crt',
   'projectile.paper': 'projectile-runtime-paper',
+  'projectile.wall': 'projectile-runtime-wall',
   'projectile.returnable': 'projectile-runtime-returnable'
 };
 
@@ -71,6 +73,28 @@ export class AssetRegistry {
     this.makeBossFallback(scene);
     this.makePaper(scene, false);
     this.makePaper(scene, true);
+    this.makeWall(scene);
+  }
+
+  /** 文件匣的橫向紙疊，只建立一次 texture，飛行與碰撞沿用同一張卡面。 */
+  private static makeWall(scene: Phaser.Scene): void {
+    const key = this.key('projectile.wall');
+    if (scene.textures.exists(key)) return;
+    const g = scene.make.graphics({ x: 0, y: 0 }, false);
+    for (let layer = 2; layer >= 0; layer--) {
+      const x = 3 + layer * 3, y = 3 + layer * 5;
+      g.fillStyle(layer === 0 ? 0xe4e9d8 : 0x68745b, 1).fillRoundedRect(x, y, 108, 44, 3);
+      g.lineStyle(1.5, 0x202b1c, 1).strokeRoundedRect(x, y, 108, 44, 3);
+    }
+    g.fillStyle(0x263321, 1).fillRoundedRect(10, 10, 26, 30, 2);
+    g.lineStyle(2.5, PALETTE.green, 1)
+      .lineBetween(17, 19, 27, 30).lineBetween(27, 19, 17, 30);
+    g.lineStyle(2, 0x66715a, 0.8);
+    for (let row = 0; row < 3; row++) g.lineBetween(44, 16 + row * 8, 99 - row * 10, 16 + row * 8);
+    g.fillStyle(0xd95365, 1).fillRect(103, 5, 6, 40);
+    g.lineStyle(1, 0xf8fff0, 0.8).lineBetween(6, 5, 105, 5);
+    g.generateTexture(key, 120, 64);
+    g.destroy();
   }
 
   private static makeNoxcatBody(scene: Phaser.Scene): void {

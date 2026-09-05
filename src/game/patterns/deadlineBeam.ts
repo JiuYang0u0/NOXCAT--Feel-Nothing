@@ -10,6 +10,7 @@ import {
 import { distanceToLineSegment } from '../systems/CollisionMath';
 import { DODGE_BODY_CLEARANCE, reachableSafeSpot, type PlayerPosition } from './fairness';
 import type { ProjectileSystem } from '../systems/ProjectileSystem';
+import { planPaperRain } from './paperRain';
 import {
   createPatternTimeline,
   type AttackPatternContext,
@@ -83,15 +84,22 @@ export function spawnDeadlineBeam(
 export function runDeadlineBeam(
   context: AttackPatternContext,
   planned?: readonly BeamLayout[] | number,
+  safeSpot?: PlayerPosition,
 ): AttackPatternHandle {
   const beams = resolveBeams(context.rng, context.intensity, planned);
+  // 雷射結束後落下文件，沿用已預告避難點的 X 通道。
+  const papers = safeSpot ? planPaperRain(context.rng, context.intensity, context.speedScale, safeSpot.x)
+    .slice(0, 4 + context.intensity).map((card) => ({ ...card, perspectiveDurationMs: 1_200 })) : [];
   return createPatternTimeline(context.durationMs, [{
     atMs: 0,
     // AttackDirector owns the mandatory 750 ms warning phase.
     emit: () => {
       for (const beam of beams) context.projectiles.spawnBeam(beam, 0, 520);
     },
-  }]);
+  }, ...papers.map((card, index) => ({
+    atMs: 600 + index * 80,
+    emit: () => { context.projectiles.spawn(card); },
+  }))]);
 }
 
 function resolveBeams(

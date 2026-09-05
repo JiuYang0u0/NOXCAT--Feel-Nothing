@@ -2,7 +2,7 @@
 
 > 你的煩惱是 Boss；NOXCAT 自己就是果凍砲彈。
 
-一款戰鬥倒數 90 秒、可提前擊敗 Boss 的直式手機瀏覽器 Boss 戰。輸入今天最煩的事，伺服器會把它編譯成安全且可重現的 `BossDNA`；拖曳 NOXCAT 閃避文件、擦彈充滿 `FEEL NOTHING`，再向後拉伸並把果凍貓射向 Boss。本文件以目前實際執行的程式與 `.env.example` 為準；現行 90 秒 runtime 為完整流程保留賽道三分鐘限制內的操作與轉場空間。
+一款目標約 60 秒通關、90 秒截止的直式手機瀏覽器 Boss 戰。輸入今天最煩的事，伺服器會把它編譯成安全且可重現的 `BossDNA`；拖曳 NOXCAT 閃避文件、擦彈充滿 `FEEL NOTHING`，再向後拉伸並把果凍貓射向 Boss。倒數涵蓋拉弓、飛行與硬直，90 秒是整局上限，約 60 秒通關是數值平衡目標；失焦與橫向暫停不計時。本文件以目前實際執行的程式與 `.env.example` 為準。
 
 ## Screenshots
 
@@ -64,13 +64,14 @@
 
 | 項目 | 現行設定 |
 | --- | --- |
-| 戰鬥倒數 | 90 秒，可提前擊敗 Boss |
+| 戰鬥倒數 | 90 秒上限，目標約 60 秒通關；拉弓、飛行與硬直也計時；失焦與橫向暫停不計時 |
 | 攻擊池 | 9 種；BossDNA 指定 3 段參數，runtime 以 seed 編排完整攻擊池 |
 | 戰鬥台詞 | 兩批生成，每批 6 句，共 12 句不重複台詞；第一批另產生 5 句交叉火力短註解 |
-| 擦彈能量 | 每顆 40 點；每顆傷害彈幕只計算一次 |
-| Neutral 加成 | 分數達 88 時每秒增加 7 能量；相機模式不是通關條件 |
-| 玩家操作 | 全場域拖曳、手指上方 72 logical px、最大跟隨速度 1,500 logical px/s |
-| 主要撞擊 | 每次 34 傷害，三次可擊敗 100 HP Boss |
+| 擦彈能量 | 每顆 10 點；每顆傷害彈幕只計算一次 |
+| 波次能量 | 完成一波 +24，無傷另 +10 |
+| Neutral 加成 | 分數達 88 時每秒增加 1.4 能量；相機模式不是通關條件 |
+| 玩家操作 | 全場域拖曳、手指上方 72 logical px、中心最高 Y=774、最大跟隨速度 1,500 logical px/s |
+| 主要撞擊 | 每次 34 傷害，Boss 132 HP，通常四次可擊敗；反彈 3 傷害，不能完成最後一擊 |
 | 弱點窗口 | 5,000ms |
 | 瀏覽器 API timeout | 每個生成階段 10,000ms，失敗後使用 fallback |
 | Server 模型 timeout | 未設定環境變數時為 5,500ms；目前 `.env.example` 的本地模型設定為 9,000ms |
@@ -131,14 +132,14 @@ OPENAI_TIMEOUT_MS=5500
 
 - 手機：單指拖曳 NOXCAT；角色保持在手指上方 72 logical px，避免被手指擋住。
 - 手機戰場會監聽 `visualViewport` 高度，在 Safari／Chrome 網址列展開、收合或旋轉時即時讓 canvas 填滿可見螢幕。540×960 是美術基準，實際相機使用單一等比 zoom 並在較長或較寬的裝置延伸可視世界；上下 HUD 錨定即時可視邊界，因此不會留下 letterbox 黑邊，也不會把角色與文件拉扁。
-- 桌面：拖曳、方向鍵或 WASD。
+- 桌面：拖曳、方向鍵或 WASD。角色中心最多到 logical Y=774；HUD 上方 Y=850 為隱形身體底線，拖曳、鍵盤、彈簧慣性與拉弓共用限制。
 - 開始頁可切換額前護目鏡；貓身、眼睛與護目鏡是獨立圖層。
-- 每波先有 500–750ms 透視危險區預警；亮起的斜紋梯形／錐形會受攻擊，暗處才是安全路徑；框內縱向斜線與地板格線共用 Boss 消失點，不使用固定角度貼圖。紙張雨的近端範圍延伸到左右畫面外，最左／最右站位也會被掃過；斜向留言與文件牆會真正從左右牆口交錯射入，並分別保留安全高度或緩慢移動的缺口。反彈波先射 3–4 張普通文件，1,250ms 時解除其傷害並讓它們各自高速飛離，隔 240ms 才在獨立路徑射出唯一一張深色綠框、環形箭頭文件，並保留至少 650ms 近景操作時間；綠色標記文件本身不會傷害玩家，只有高速碰撞才會將它反射。一般波結束後只保留 360–500ms recovery；彈幕提前清空時也會在最低可讀時間後立刻收尾，未離場卡片不會一起淡出。
-- 靠近彈幕但不碰到會擦彈充能；每顆彈幕只計一次。
+- 每波先有 500–750ms 預警，九種招式均增加文件量並保留安全通道。文件牆以左右紙疊、側邊文件匣、缺口光軌與箭頭提示來向，缺口連續移動，預警範圍與可移動區共用上下界。雷射結束後會追加 5–7 張文件，保留同一避難點。反彈波先射 5–6 張普通文件，1,250ms 時解除其傷害並讓其離場，再隔 240ms 射出第一張綠色文件，第二張間隔 1,000ms；其餘每兩波之間穿插一張綠色文件，保留 2,300ms 獨立接近與操作段。已滿能量時直接進入弱點窗口，取消尚未出現的補給。綠色文件不會傷害玩家，須以高速碰撞反射。
+- 每顆文件只可擦彈一次，每次 +10 能量；每波完成 +24，無傷另 +10，相機 Neutral 加成每秒 +1.4。能量上限仍為 100。
 - 啟用相機並完成校正後，Neutral 達標可提供藍色閃電能量加成；玩家略過或拒絕相機仍能靠擦彈完成整局。
 - 帶空心框與旋轉箭頭的文件可在高速移動時撞回 Boss。
 - 能量滿後，按住 NOXCAT、向想發射方向的反方向拉、放開。
-- 三次主要撞擊（每次 34 傷害）即可勝利；時間到或生命歸零則失敗。
+- Boss 為 132 HP，每次主要撞擊 34 傷害，通常四次擊中可勝利；反彈命中造成 3 傷害、增加 16 能量。反彈不能直接完成最後一擊。
 
 招式包含 `paper_rain`、`comment_crossfire`、`deadline_beam`、`closing_walls`、`revision_homing`、`returnable_burst`、`top_downpour`、`pulse_barrage`、`alternating_zipper`。其中 `top_downpour` 使用畫面正上方的獨立垂直透視射線，`pulse_barrage` 以齊射與停頓形成節奏，`alternating_zipper` 則左右交替加速；三者皆保留可預讀的安全通道。開發版與正式版預設共用完整九招池，AI 成功或離線 fallback 都以 BossDNA seed 洗牌，每輪九招各出現一次，下一輪重新洗牌且不與上一輪最後一招重複。選招與彈幕布局使用獨立 RNG，因此同一 BossDNA 重玩會重現選招順序，玩家移動不會改變下一輪的招式順序。API 的 BossDNA 仍維持三段設定，遊戲保留這三招各自的強度與時間，其餘招式使用既有平衡預設；重複指定同一招時採第一筆。`?demo=all` 已無須使用；`?demo=off` 僅在開發版保留原始三段固定序列，供單招診斷與既有測試使用，正式版忽略此參數。戰鬥布局與選招都不使用 `Math.random()`。
 
@@ -191,7 +192,7 @@ npm start
 
 其他指令：
 
-- 本次整合的 `npm run test` 為 30 個測試檔、239 項 unit tests，包含 Ollama `think: false`、九招洗牌、完整場域安全通道、固定垂直軸 yaw、透視碰撞箱與 SVG 角色圖層。
+- 目前 `npm run check` 通過 lint、typecheck、33 個測試檔共 274 項 unit tests 與 production build，包含 Ollama `think: false`、九招洗牌、完整場域安全通道、固定垂直軸 yaw、透視碰撞箱與 SVG 角色圖層。
 - `npm run test:e2e`：依桌面／行動瀏覽器能力條件執行，重點驗證上緣站位碰撞、完整場地移動、SVG 角色、真實拉弓命中、固定 yaw 及手機 viewport。
 
 <!-- Historical pre-merge test descriptions retained for release-note context.
@@ -202,6 +203,8 @@ npm start
 - `npm run test:e2e`：依桌面／行動瀏覽器能力條件執行或略過。桌面 Chromium、390×844 Android Chrome profile 與 iPhone WebKit profile 都會在 API 失敗後，經 canvas 真實執行三次拉弓／放手／物理命中並完成 fallback 勝利；手機 profile 另驗證首頁、戰鬥與結束頁在 390×844／390×600 完整貼齊 live viewport、相機 X/Y zoom 相同、worldView 延伸正確，以及 resize 後沒有水平或垂直溢出；獨立案例會強制走 installed-PWA standalone fallback。測試也會透過 development-only hook 推進同一個 round-expiry 路徑，驗證 180 秒 `BOSS ESCAPED` 結算與兩條重玩流程；最後一擊另驗證九層 Boss 塌落演出確實先於結果頁。其餘涵蓋AI／fallback 預設九招洗牌順序、左右牆口實際進場、真實高速拖曳反彈、敵方紙張完成透視後的 seeded 雙向旋轉、遠景無碰撞、近景可見中心／碰撞中心一致、低 FPS handoff swept collision、兩張探針 `2 → 1 → 0` 個別加速離場、提早結束空白 ACTIVE、縮短 recovery、200ms 快速拖放、攻擊 `TELEGRAPH → ACTIVE → RECOVERY`、合成相機校正／Neutral 加成／抑制／無臉／完整清理、低 FPS 降級與真實 rAF cadence、暫停 Clock、鍵盤／讀屏語意、44px 觸控目標、橫向暫停與無版面溢出。
 -->
 - 正式版伺服器 smoke test：`dist/` 首頁、生成式 Boss PNG 與 `/api/boss` 都由同一個 Express process 回傳 200；未設定 API key 時正確回傳三段攻擊的本地 fallback。
+- 本次平衡回歸：`~/.playwright-env/bin/python scripts/verify-balance.py --url http://127.0.0.1:4173 --engine chromium`。以真實 Phaser 碰撞、Clock 和 pointer 拉弓事件推進三種固定策略，不強制充能、傷害、生命或無敵；檢查擦彈與反彈策略在 50–65 秒內以四次撞擊通關，以及只待在安全通道、不主動發射時在 90 秒結束。本次 Chromium／WebKit 正式建置結果分別約 61.9 秒（擦彈）、60.9 秒（搭配反彈），不主動發射均在 90 秒逾時。此為固定 seed 的模擬基準，不能當作真人平均通關時間。正式建置可對啟動的 production URL 執行同一腳本；`--engine both` 可加測 WebKit，若本機瀏覽器版本不同，使用 `--webkit-executable` 指定已安裝的執行檔。
+- 招式與操作回歸：`~/.playwright-env/bin/python scripts/verify-attack-redesign.py --engine chromium`，WebKit 使用 `--engine webkit --executable <本機 pw_run.sh 路徑>`。本次兩個瀏覽器合計 324 組（九招、30／60／120 FPS、兩種速度、三個起始位置）皆能無傷通過安全通道、沒有文件池耗盡造成的漏發，並通過四次拉弓勝利與重玩。
 - 攻擊選招 dev/build 回歸：先啟動 `npm run dev` 與 `PORT=4175 npm start`，再執行 `~/.playwright-env/bin/python scripts/verify-attack-sequence.py`。此腳本以 Chromium 的桌面／手機尺寸、模擬 AI 回應與離線 fallback 比對三輪共 27 招，驗證九招完整、不連續重複、保留 AI 強度與時間、相同 seed 重播、不同 seed 變化，以及正式版忽略 `demo` 參數；不呼叫外部 AI API。
 - `npm run capture:screenshots`：對目前 `http://127.0.0.1:4173` 產生開始、危險區、透視攻擊、戰鬥、拖曳、回彈、發射與結果手機截圖。
 - `?debug=1`：FPS、狀態、hitbox、BossDNA 與操作控制。
@@ -230,7 +233,7 @@ HX370 production 與 GitHub Actions 自動部署的設定、驗證及復原方�
 ## Progress
 
 - [x] Gate 0：Vite／Express／Phaser 單一服務、以 540×960 為 authored world 並以等比延伸相機填滿 live viewport 的 responsive canvas、production build。
-- [x] Gate 1：fallback 垂直切片、果凍彈簧拖曳、hit／graze／energy、三擊勝利、結果頁。
+- [x] Gate 1：fallback 垂直切片、果凍彈簧拖曳、hit／graze／energy、四擊勝利、結果頁。
 - [x] Gate 2：九種 deterministic pattern、左右超掃近端平面、Boss／側牆／正上方多入口透視射入、危險區預警／安全路徑／清場空檔、反彈文件、90 秒失敗、動態程式化配樂與音效、失焦暫停、debug、mobile E2E。
 - [x] Gate 3：BossDNA Schema、OpenAI-compatible v1 Chat Completions Structured Outputs、可設定 local LLM base URL、rate limit、4 KB body、server/client 雙層 fallback。
 - [x] Gate 4：明確同意、2 秒 median baseline、Worker 8–10 Hz、main-thread fallback、Neutral/EMA、完整清理。
@@ -244,6 +247,6 @@ HX370 production 與 GitHub Actions 自動部署的設定、驗證及復原方�
 - 此環境未設定 `OPENAI_API_KEY`；Structured Outputs、Zod 驗證、mock AI success 與實際 fallback 均已通過，但仍需在本機 `.env` 設定有效 key，確認真實 API 回傳 `source: ai` 並完整玩完一局。
 - Playwright 的 Pixel 5／iPhone 13 是桌面端裝置 profile，不等同真 Android Chrome／iPhone Safari。真機觸控、safe-area、旋轉、音訊解鎖、切換分頁恢復、相機系統指示燈關閉、不同光線／角度與中階手機 55–60 FPS 仍需人工驗收。
 - 自動化測試以合成、完全不開啟真實鏡頭的 frame 驗證相機成功、權限拒絕、略過、Neutral 加成／抑制、無臉與資源清理；它不等同實體相機驗收。
-- 戰鬥倒數已縮短為 90 秒，為 Boss 登場、相機校正與結果轉場保留時間；正式提交前仍需以真機量測完整 wall-clock 流程。
+- 戰鬥倒數為 90 秒，Boss 登場與結果動畫另計；失焦或橫向暫停不計入倒數。正式提交前仍需以真機量測完整 wall-clock 流程。
 - Phaser 主 bundle 約 1.37 MB（gzip 約 367 KB）；Face worker／vision bundle 已分離，只有在固定說明頁按下校正並授予相機權限後才啟動推論。
 - 配樂音檔與合成音效皆在首次使用者手勢後解鎖 Web Audio；真機仍需人工驗證 iPhone Safari 靜音鍵／省電模式與 Android Chrome 音訊焦點行為。

@@ -6,6 +6,7 @@ import { clipLineToBounds } from '../systems/LineGeometry';
 import { reachableSafeSpot, type PlayerPosition } from './fairness';
 import {
   createPatternTimeline,
+  fitEmissionTimes,
   staggeredSpawnEvents,
   type AttackPatternContext,
   type AttackPatternHandle,
@@ -88,7 +89,8 @@ export function planCommentCrossfire(
 ): CommentCrossfirePlan {
   const speed = (235 + intensity * 20) * speedScale;
   const comments = commentLines.length > 0 ? commentLines : FALLBACK_COMMENTS;
-  const projectiles = layout.rays.map((ray): ProjectileConfig => {
+  // 同一組安全射線分兩批發射，增加文件但不增加封路方向。
+  const projectiles = [...layout.rays, ...layout.rays].map((ray): ProjectileConfig => {
     const dx = ray.target.x - ray.origin.x;
     const dy = ray.target.y - ray.origin.y;
     const length = Math.hypot(dx, dy);
@@ -130,9 +132,10 @@ export function runCommentCrossfire(
     context.commentLines,
     layout,
   );
-  return createPatternTimeline(
-    context.durationMs,
-    // 所有來源共用同一個發射時間，不再依序輪流射出。
-    staggeredSpawnEvents(context.projectiles, plan.projectiles, 0),
-  );
+  const times = fitEmissionTimes(plan.projectiles.map((_, index) =>
+    index < plan.layout.rays.length ? 0 : 460), context.durationMs,
+  Math.max(...plan.projectiles.map((card) => card.perspectiveDurationMs!)) + 120);
+  return createPatternTimeline(context.durationMs,
+    staggeredSpawnEvents(context.projectiles, plan.projectiles, 0)
+      .map((event, index) => ({ ...event, atMs: times[index]! })));
 }

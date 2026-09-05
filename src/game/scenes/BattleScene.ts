@@ -9,9 +9,11 @@ import {
   AIM_MIN_PULL,
   BOSS_WEAK_POINT_RADIUS,
   DODGE_AREA_TOP,
+  DODGE_AREA_BOTTOM,
   GAME_HEIGHT,
   GAME_WIDTH,
   LAUNCH_SPEED,
+  ENERGY_PER_WAVE,
   ENERGY_PER_PERFECT_WAVE,
   NEUTRAL_ENERGY_PER_SECOND,
   POST_HIT_RELIEF_MS,
@@ -143,7 +145,7 @@ export class BattleScene extends Phaser.Scene {
   );
   private background?: Phaser.GameObjects.Graphics;
   private vignette?: Phaser.GameObjects.Graphics;
-  private readonly awardedBeams = new Set<number>();
+  private waveStartLives = 3;
   private readonly handleViewportResize = (): void => this.applyViewportLayout();
   private currentPacing: PacingScale | null = null;
 
@@ -198,18 +200,22 @@ export class BattleScene extends Phaser.Scene {
         getPlayerPosition: () => ({ x: this.noxcat.x, y: this.noxcat.y }),
         onWavePhaseChanged: (phase, pattern, _volley, _safeLane, dangerZones) => {
           if (phase === 'TELEGRAPH') {
+            this.waveStartLives = this.session.lives;
             this.boss.setExpression('charging');
             this.showDangerZones(dangerZones ?? []);
-            this.hud.setStateMessage(DANGER_INSTRUCTION, true);
+            this.hud.setStateMessage(pattern === 'closing_walls' ? '跟著缺口移動' : DANGER_INSTRUCTION, pattern !== 'closing_walls');
             this.hud.flash(ATTACK_NAMES[pattern], 850, true);
           } else if (phase === 'ACTIVE') {
             this.boss.setExpression('attacking');
             this.fadeDangerZones();
-            this.hud.setStateMessage(DANGER_INSTRUCTION, true);
+            this.hud.setStateMessage(pattern === 'closing_walls' ? '跟著缺口移動' : DANGER_INSTRUCTION, pattern !== 'closing_walls');
           } else {
             this.boss.setExpression('recovering');
             this.hideDangerZones();
-            this.hud.setStateMessage('CLEAR');
+            const bonus = ENERGY_PER_WAVE
+              + (this.session.lives === this.waveStartLives ? ENERGY_PER_PERFECT_WAVE : 0);
+            this.session.addEnergy(bonus);
+            this.hud.setStateMessage(`能量恢復 +${bonus}`);
           }
         },
       },
@@ -238,7 +244,13 @@ export class BattleScene extends Phaser.Scene {
 
     if (this.session.state !== BattleState.INTRO && !isTerminalBattleState(this.session.state)) {
       this.simulationUpdateCount += 1;
-      this.session.advanceTime(delta);
+      // 與 director / 碰撞 / 畫質共用同一個夾限時鐘，避免掉幀時倒數跑得比模擬快。
+      this.session.advanceTime(Math.max(0, delta));
+      if (isTerminalBattleState(this.session.state)) {
+        this.hud.update(this.session.snapshot(), this.neutralScore);
+        this.finishBattle();
+        return;
+      }
       this.syncMusicToBattleState();
       this.currentPacing = computePacing({
         elapsedMs: this.session.elapsedMs,
@@ -252,7 +264,7 @@ export class BattleScene extends Phaser.Scene {
       this.director.setPacingScale(this.currentPacing);
       this.updateVulnerabilityWindow(delta);
       this.updateNeutral(face, dt);
-      this.handleBeamCollisions(noxcatBeforeStep, delta);
+      this.handleBeamCollisions(noxcatBeforeStep);
       this.projectiles.update(dt, this.noxcat, this.combatTimeScale);
       this.updateHomingCue(delta);
       this.handleProjectileCollisions(noxcatBeforeStep, delta);
@@ -401,11 +413,49 @@ export class BattleScene extends Phaser.Scene {
 
   private paintDangerZones(zones: readonly DangerZoneHint[]): void {
     this.waveGuide.clear();
+    if (this.director.currentPattern === 'closing_walls') {
+      this.drawClosingWallGuide();
+      return;
+    }
     for (const zone of zones) {
       if (zone.kind === 'rect') this.drawHatchedDangerRect(zone);
       else if (zone.kind === 'ray') this.drawDirectionalDanger(zone);
       else if (zone.kind === 'safe') this.drawSafeSpot(zone);
       else this.drawTargetDanger(zone.x, zone.y, zone.radius);
+    }
+  }
+
+  private drawClosingWallGuide(): void {
+    const lane = this.director.currentSafeLane;
+    if (!lane) return;
+    const top = lane.center - lane.halfWidth;
+    const bottom = lane.center + lane.halfWidth;
+    const left = 16;
+    const right = GAME_WIDTH - 16;
+    const g = this.waveGuide;
+    // 兩側文件匣只標記危險高度，留白通道與實際共用的玩家安全缺口一致。
+    for (const [y, height, edge] of [
+      [DODGE_AREA_TOP, top - DODGE_AREA_TOP, top],
+      [bottom, DODGE_AREA_BOTTOM - bottom, bottom],
+    ] as const) {
+      g.fillStyle(COMBAT_COLORS.danger, 0.035).fillRect(left, y, right - left, height);
+      for (const x of [left, right - 24]) {
+        g.fillStyle(COMBAT_COLORS.danger, 0.16).fillRoundedRect(x, y, 24, height, 4);
+        for (let row = y + 14; row < y + height - 8; row += 24) {
+          g.lineStyle(2, COMBAT_COLORS.danger, 0.48).lineBetween(x + 5, row, x + 19, row - 5);
+        }
+      }
+      g.lineStyle(7, PALETTE.green, 0.09).lineBetween(left + 28, edge, right - 28, edge);
+      g.lineStyle(1.5, PALETTE.green, 0.85).lineBetween(left + 28, edge, right - 28, edge);
+      for (const x of [left + 28, right - 28]) {
+        const direction = edge === top ? 1 : -1;
+        g.lineStyle(3, PALETTE.white, 0.9).lineBetween(x, edge, x, edge + direction * 14);
+      }
+      const cueY = y + height / 2;
+      if (height > 45) {
+        this.drawCueArrow(72, cueY, 1, 0);
+        this.drawCueArrow(GAME_WIDTH - 72, cueY, -1, 0);
+      }
     }
   }
 
@@ -586,7 +636,7 @@ export class BattleScene extends Phaser.Scene {
       targets: this.waveGuide,
       // Actual projectiles take over as the primary cue during ACTIVE, while a
       // faint hatch preserves the promise made by the telegraph.
-      alpha: this.director.currentPattern === 'closing_walls' ? 0.5 : 0.22,
+      alpha: this.director.currentPattern === 'closing_walls' ? 0.75 : 0.22,
       duration: 240,
       ease: 'Quad.Out',
     });
@@ -868,7 +918,6 @@ export class BattleScene extends Phaser.Scene {
 
   private handleBeamCollisions(
     previous: { x: number; y: number },
-    deltaMs: number,
   ): void {
     const live = this.projectiles.activeBeams().filter((beam) => beam.telegraphMs <= 0);
     for (const beam of live) {
@@ -887,17 +936,6 @@ export class BattleScene extends Phaser.Scene {
           this.showBossLine(true);
           this.beginPostHitRelief();
         }
-      }
-    }
-    const finishing = live.filter((beam) => beam.activeMs <= deltaMs + 18);
-    const stillLive = live.filter((beam) => beam.activeMs > deltaMs + 18);
-    // 整波雷射都結束且全部躲開才給一次完美波次，避免 2–3 條同時擊中時連加能量。
-    if (finishing.length > 0 && stillLive.length === 0 && live.every((beam) => !beam.hitPlayer)) {
-      const alreadyAwarded = live.some((beam) => this.awardedBeams.has(beam.id));
-      if (!alreadyAwarded) {
-        for (const beam of live) this.awardedBeams.add(beam.id);
-        this.session.registerPerfectWave();
-        this.hud.flash(`PERFECT WAVE +${ENERGY_PER_PERFECT_WAVE}`, 700);
       }
     }
   }
@@ -1306,7 +1344,7 @@ export class BattleScene extends Phaser.Scene {
         if (isTerminalBattleState(this.session.state)) return;
         // Use the same clock and transition entry as a naturally elapsed
         // round; the next scene update then runs the normal result dispatch.
-        this.session.advanceTime(this.session.remainingMs, { ignoreAttackPause: true });
+        this.session.advanceTime(this.session.remainingMs);
       },
       overloadForTest: () => {
         if (isTerminalBattleState(this.session.state)) return;

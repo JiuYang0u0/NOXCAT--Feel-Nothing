@@ -251,8 +251,10 @@ export class Projectile extends Phaser.GameObjects.Container {
       .setRotation(0)
       .setScale(initialPose.scale, initialVisualScaleY);
     this.sprite.setVisible(!this.perspectiveMesh && config.kind !== 'comment');
+    const asset = config.kind === 'wall' ? 'projectile.wall'
+      : this.reflectable ? 'projectile.returnable' : 'projectile.paper';
     this.sprite
-      .setTexture(AssetRegistry.key(this.reflectable ? 'projectile.returnable' : 'projectile.paper'))
+      .setTexture(AssetRegistry.key(asset))
       .setDisplaySize(PROJECTILE_CARD_WIDTH, PROJECTILE_CARD_HEIGHT);
     this.sprite.clearTint();
     this.sprite.setRotation(0);
@@ -264,7 +266,7 @@ export class Projectile extends Phaser.GameObjects.Container {
       ?.setVisible(true)
       .setTexture(config.kind === 'comment'
         ? this.comment.texture.key
-        : AssetRegistry.key(this.reflectable ? 'projectile.returnable' : 'projectile.paper'),
+        : AssetRegistry.key(asset),
       undefined,
       false,
       false)

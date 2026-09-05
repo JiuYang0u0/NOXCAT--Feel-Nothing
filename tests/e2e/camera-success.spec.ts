@@ -90,9 +90,9 @@ test('default Neutral mode succeeds through calibration, bonus, suppression, and
   await expect(host).toHaveAttribute('data-face-found', 'false');
   await expect(host).toHaveAttribute('data-face-bonus-eligible', 'false');
 
-  for (let hit = 1; hit <= 3; hit += 1) {
+  for (let hit = 1; hit <= 4; hit += 1) {
     await page.evaluate(() => window.__NOXCAT_TEST__?.damageBoss());
-    if (hit < 3) {
+    if (hit < 4) {
       await page.waitForFunction(
         (expectedHits) => (window.__NOXCAT_TEST__?.snapshot().mainAttackHits ?? 0) >= expectedHits,
         hit,

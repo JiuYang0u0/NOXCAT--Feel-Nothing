@@ -152,7 +152,7 @@ describe('new deterministic attack patterns', () => {
     const first = planTopDownpour(new SeededRng(23), 3, 1, 270);
     const second = planTopDownpour(new SeededRng(23), 3, 1, 270);
     expect(first).toEqual(second);
-    expect(first.projectiles).toHaveLength(14);
+    expect(first.projectiles).toHaveLength(18);
 
     for (const config of first.projectiles) {
       const origin = config.perspectiveOrigin;
@@ -214,7 +214,7 @@ describe('new deterministic attack patterns', () => {
       PULSE_BARRAGE_GAP_MS * 3,
     ]);
     for (const formation of first.formations) {
-      expect(formation.projectiles).toHaveLength(8);
+      expect(formation.projectiles).toHaveLength(10);
       expect(new Set(formation.projectiles.map((card) => Math.round(card.x / 12))).size)
         .toBeGreaterThan(3);
       for (const config of formation.projectiles) {
@@ -236,23 +236,23 @@ describe('new deterministic attack patterns', () => {
       },
     } as unknown as ProjectileSystem;
     const handle = runPulseBarrage(createRuntime(projectiles), 270);
-    expect(spawned).toHaveLength(8);
+    expect(spawned).toHaveLength(10);
     handle.update(PULSE_BARRAGE_GAP_MS - 1);
-    expect(spawned).toHaveLength(8);
+    expect(spawned).toHaveLength(10);
     handle.update(1);
-    expect(spawned).toHaveLength(16);
+    expect(spawned).toHaveLength(20);
   });
 
   it('alternates sides with an accelerando while retaining one projected safe wedge', () => {
     const first = planAlternatingZipper(new SeededRng(77), 3, 2, 1, 270);
     const second = planAlternatingZipper(new SeededRng(77), 3, 2, 1, 270);
     expect(first).toEqual(second);
-    expect(first.shots).toHaveLength(8);
-    expect(first.shots.map(({ side }) => side)).toEqual([-1, 1, -1, 1, -1, 1, -1, 1]);
+    expect(first.shots).toHaveLength(11);
+    expect(first.shots.map(({ side }) => side)).toEqual([-1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1]);
     const gaps = first.shots.slice(1).map((shot, index) => (
       shot.atMs - first.shots[index]!.atMs
     ));
-    expect(gaps).toEqual(ALTERNATING_ZIPPER_INTERVALS_MS.slice(0, 7));
+    expect(gaps).toEqual([...ALTERNATING_ZIPPER_INTERVALS_MS, 300, 300, 300]);
     expect(gaps).toEqual([...gaps].sort((left, right) => right - left));
     for (const shot of first.shots) {
       expectOutsidePerspectiveSafeLane(

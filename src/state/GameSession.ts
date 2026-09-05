@@ -349,24 +349,14 @@ export class GameSession {
     this.neutralPeak = this.neutralPeak === null ? safeScore : Math.max(this.neutralPeak, safeScore);
   }
 
-  get attackClockPaused(): boolean {
-    return this.currentState === BattleState.VULNERABLE
-      || this.currentState === BattleState.AIMING
-      || this.currentState === BattleState.LAUNCHED
-      || this.currentState === BattleState.STAGGERED;
-  }
-
-  advanceTime(deltaMs: number, options: { ignoreAttackPause?: boolean } = {}): void {
+  advanceTime(deltaMs: number): void {
     if (!Number.isFinite(deltaMs) || deltaMs < 0) {
       throw new RangeError('deltaMs must be a finite, non-negative number');
     }
     if (isTerminalBattleState(this.currentState)) {
       return;
     }
-    if (this.attackClockPaused && options.ignoreAttackPause !== true) {
-      return;
-    }
-
+    // 拉弓、飛行和硬直也計入整局倒數；失焦暫停由 BattleScene 停止推進。
     this.currentElapsedMs = Math.min(this.durationMs, this.currentElapsedMs + deltaMs);
     if (this.currentElapsedMs >= this.durationMs) {
       this.transition(BattleState.LOST, 'time-expired');

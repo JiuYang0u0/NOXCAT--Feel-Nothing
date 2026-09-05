@@ -1,4 +1,4 @@
-import { ROUND_DURATION_MS } from '../constants';
+import { MAIN_ATTACK_HITS_TO_WIN, ROUND_DURATION_MS, TARGET_VICTORY_MS } from '../constants';
 import { clamp } from '../../utils/math';
 
 export interface PacingInput {
@@ -22,7 +22,7 @@ export interface PacingScale {
 }
 
 export function computeExpectedHits(progress01: number): number {
-  return progress01 * 3.2;
+  return progress01 * (MAIN_ATTACK_HITS_TO_WIN + 0.2);
 }
 
 export function computeGrazeRatePerMinute(grazeCount: number, elapsedMs: number): number {
@@ -37,7 +37,7 @@ export function computePacing(input: PacingInput): PacingScale {
   const mainHits = Number.isFinite(input.mainHits) ? clamp(input.mainHits, 0, 10) : 0;
   const grazeCount = Number.isFinite(input.grazeCount) ? Math.max(0, input.grazeCount) : 0;
 
-  const progress = clamp(elapsed / ROUND_DURATION_MS, 0, 1);
+  const progress = clamp(elapsed / TARGET_VICTORY_MS, 0, 1);
   const expectedHits = computeExpectedHits(progress);
   const hitsBehind = expectedHits - mainHits;
 

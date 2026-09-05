@@ -6,6 +6,7 @@ import {
   type FaceScoreUpdate,
 } from '../face/FaceController';
 import { createGameConfig } from '../game/config';
+import { MAIN_ATTACK_HITS_TO_WIN } from '../game/constants';
 import { setBattleRuntime } from '../game/runtime';
 import type { BattleResultDetail } from '../game/scenes/BattleScene';
 import { AudioSystem } from '../game/systems/AudioSystem';
@@ -458,7 +459,7 @@ export class AppController {
     setSafeText(requireElement(this.root, '[data-stat="time"]'), formatSeconds(snapshot.elapsedMs));
     setSafeText(requireElement(this.root, '[data-stat="graze"]'), String(snapshot.grazeCount));
     setSafeText(requireElement(this.root, '[data-stat="reflect"]'), String(snapshot.reflectCount));
-    setSafeText(requireElement(this.root, '[data-stat="hits"]'), `${snapshot.mainAttackHits} / 3`);
+    setSafeText(requireElement(this.root, '[data-stat="hits"]'), `${snapshot.mainAttackHits} / ${MAIN_ATTACK_HITS_TO_WIN}`);
     if (snapshot.averageNeutral !== null) {
       const neutral = requireElement<HTMLElement>(this.root, '.neutral-result');
       neutral.hidden = false;

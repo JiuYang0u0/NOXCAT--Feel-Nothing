@@ -20,7 +20,7 @@ export function planRevisionHoming(
   speedScale: number,
   playerPosition?: PlayerPosition,
 ): ProjectileConfig[] {
-  const count = intensity === 3 ? 3 : 2;
+  const count = intensity === 3 ? 4 : 3;
   const approachMs = Math.max(2_200, Math.round(2_800 / Math.max(0.1, speedScale)));
   const player = clampPlayerPosition(playerPosition);
   return Array.from({ length: count }, (_, index) => {

@@ -1,4 +1,18 @@
 import { expect, test, type Page } from '@playwright/test';
+import {
+  BOSS_MAX_HP,
+  ENERGY_PER_REFLECT,
+  FINGER_OFFSET_Y,
+  PLAYER_MAX_X,
+  PLAYER_MAX_Y,
+  PLAYER_MIN_X,
+  PLAYER_MIN_Y,
+  REFLECT_DAMAGE,
+} from '../../src/game/constants';
+
+// 指標位置換算：手指在角色下方 FINGER_OFFSET_Y，所以要貼到移動區底線
+// 得把指標放在 PLAYER_MAX_Y + FINGER_OFFSET_Y。
+const BOTTOM_POINTER_Y = PLAYER_MAX_Y + FINGER_OFFSET_Y;
 
 interface CanvasBox {
   readonly x: number;
@@ -90,24 +104,52 @@ test('moving NOXCAT to the upper arena does not bypass paper-rain damage', async
   ]);
   if (!box || !visual) throw new Error('Canvas or NOXCAT position unavailable');
 
-  const start = toScreen(box, visual.x, visual.y + 72);
-  const upperCentre = toScreen(box, 270, 430 + 72);
+  const start = toScreen(box, visual.x, visual.y + FINGER_OFFSET_Y);
   await page.mouse.move(start.x, start.y);
   await page.mouse.down();
-  await page.mouse.move(upperCentre.x, upperCentre.y, { steps: 6 });
-  await page.waitForFunction(() => (
-    (window.__NOXCAT_TEST__?.visualSnapshot().y ?? 999) < 455
-  ));
-  await page.mouse.up();
 
   await page.waitForFunction(() => (
     window.__NOXCAT_TEST__?.waveSnapshot().pattern === 'paper_rain'
       && window.__NOXCAT_TEST__?.waveSnapshot().phase === 'ACTIVE'
   ));
-  await page.waitForFunction(() => (
-    (window.__NOXCAT_TEST__?.snapshot().lives ?? 3) < 3
-  ), undefined, { timeout: 5_000 });
 
+  // 不能固定停在 x=270：文件雨的安全通道是有種子的，會整條移動，硬編的欄位
+  // 隨時可能落進通道的避讓範圍而永遠打不到。改成把 y 釘在移動區上緣、只追著
+  // 真實文件的欄位走，這樣測的才是「上方區域一樣會啟用碰撞」。
+  let observedUpperPaper = false;
+  let catYAtHit = 0;
+  const deadline = Date.now() + 8_000;
+  while (Date.now() < deadline) {
+    const sample = await page.evaluate(({ minX, maxX, bandY }) => {
+      const hook = window.__NOXCAT_TEST__;
+      const papers = (hook?.projectileSnapshot() ?? [])
+        .filter((projectile) => (
+          projectile.kind === 'paper' && projectile.isDamage
+          && projectile.visibleX >= minX && projectile.visibleX <= maxX
+        ))
+        .sort((first, second) => (
+          Math.abs(first.visibleY - bandY) - Math.abs(second.visibleY - bandY)
+        ));
+      return {
+        lives: hook?.snapshot().lives ?? 0,
+        catY: hook?.visualSnapshot().y ?? 0,
+        target: papers[0] ?? null,
+      };
+    }, { minX: PLAYER_MIN_X, maxX: PLAYER_MAX_X, bandY: PLAYER_MIN_Y });
+    catYAtHit = sample.catY;
+    if (sample.lives < 3) break;
+    if (sample.target) {
+      observedUpperPaper = true;
+      const target = toScreen(box, sample.target.visibleX, PLAYER_MIN_Y + FINGER_OFFSET_Y);
+      await page.mouse.move(target.x, target.y);
+    }
+    await page.waitForTimeout(12);
+  }
+  await page.mouse.up();
+
+  expect(observedUpperPaper).toBe(true);
+  // 命中必須發生在上方區域，否則這個測試就退化成一般的文件雨碰撞測試。
+  expect(catYAtHit).toBeLessThan(PLAYER_MIN_Y + 40);
   expect(await page.evaluate(() => window.__NOXCAT_TEST__?.snapshot().lives)).toBe(2);
 });
 
@@ -132,7 +174,7 @@ test('the full NOXCAT silhouette fits through the advertised paper safe lane', a
     throw new Error('Canvas, NOXCAT, or paper safe lane unavailable');
   }
   const start = toScreen(box, state.cat.x, state.cat.y);
-  const target = toScreen(box, state.laneX, 892);
+  const target = toScreen(box, state.laneX, BOTTOM_POINTER_Y);
   await page.mouse.move(start.x, start.y);
   await page.mouse.down();
   await page.mouse.move(target.x, target.y, { steps: 5 });
@@ -176,15 +218,15 @@ test('a real high-speed flick returns the real marked document to the Boss', asy
   const interactionX = Math.min(480, Math.max(60, initial.card.x + direction * 10));
   const startX = Math.min(494, Math.max(46, interactionX - direction * 130));
   const endX = Math.min(494, Math.max(46, interactionX + direction * 100));
-  const start = toScreen(box, startX, 892);
+  const start = toScreen(box, startX, BOTTOM_POINTER_Y);
   await page.mouse.move(start.x, start.y);
   await page.mouse.down();
   await page.waitForFunction(
-    ({ expectedX }) => {
+    ({ expectedX, expectedY }) => {
       const cat = window.__NOXCAT_TEST__?.visualSnapshot();
-      return cat != null && Math.abs(cat.x - expectedX) < 12 && Math.abs(cat.y - 820) < 12;
+      return cat != null && Math.abs(cat.x - expectedX) < 12 && Math.abs(cat.y - expectedY) < 12;
     },
-    { expectedX: startX },
+    { expectedX: startX, expectedY: PLAYER_MAX_Y },
     { timeout: 1_500 },
   );
   await page.waitForFunction(() => {
@@ -197,7 +239,7 @@ test('a real high-speed flick returns the real marked document to the Boss', asy
   );
   expect(livesAfterSlowContact).toBe(initial.lives);
 
-  const end = toScreen(box, endX, 892);
+  const end = toScreen(box, endX, BOTTOM_POINTER_Y);
   await page.mouse.move(end.x, end.y);
   await page.waitForFunction(
     () => (window.__NOXCAT_TEST__?.snapshot().reflectCount ?? 0) >= 1,
@@ -207,8 +249,10 @@ test('a real high-speed flick returns the real marked document to the Boss', asy
   await page.mouse.up();
 
   const result = await page.evaluate(() => window.__NOXCAT_TEST__?.snapshot());
-  expect(result).toMatchObject({ lives: initial.lives, reflectCount: 1, bossHp: 94 });
-  expect(result?.energy ?? 0).toBeGreaterThanOrEqual(18);
+  expect(result).toMatchObject({
+    lives: initial.lives, reflectCount: 1, bossHp: BOSS_MAX_HP - REFLECT_DAMAGE,
+  });
+  expect(result?.energy ?? 0).toBeGreaterThanOrEqual(ENERGY_PER_REFLECT);
 });
 
 test('a too-short pull keeps its PULL FARTHER hint readable before the countdown resumes', async ({ page }, testInfo) => {
@@ -232,7 +276,9 @@ test('a too-short pull keeps its PULL FARTHER hint readable before the countdown
   await page.mouse.move(short.x, short.y);
   await page.mouse.up();
 
-  await page.waitForTimeout(250);
+  // 提示只保留 PULL_HINT_HOLD_MS(650ms)。原本先睡 250ms 再取樣，只剩 400ms
+  // 餘裕吃 waitForTimeout + IPC，機器一忙就會抓到已經跳回的倒數字串。
+  // 改成放開後立刻取樣，held 的行為一樣被涵蓋，但不再賭牆鐘。
   const held = await page.evaluate(() => window.__NOXCAT_TEST__?.waveSnapshot());
   expect(held?.stateMessage).toBe('PULL FARTHER');
   expect(held?.vulnerableRemainingMs ?? 0).toBeGreaterThan(0);

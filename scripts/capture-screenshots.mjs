@@ -69,7 +69,7 @@ try {
   const releaseVisual = await page.evaluate(() => window.__NOXCAT_TEST__?.visualSnapshot());
   console.log('Jelly capture snapshots', { dragVisual, releaseVisual });
 
-  for (let hit = 1; hit <= 3; hit += 1) {
+  for (let hit = 1; hit <= 4; hit += 1) {
     await page.waitForFunction(() => {
       const state = window.__NOXCAT_TEST__?.snapshot().state;
       return state === 'DODGING' || state === 'VULNERABLE';

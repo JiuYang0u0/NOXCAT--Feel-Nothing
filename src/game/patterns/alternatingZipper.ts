@@ -37,7 +37,7 @@ export function planAlternatingZipper(
   speedScale: number,
   safeLaneX: number,
 ): AlternatingZipperPlan {
-  const shotCount = 5 + intensity;
+  const shotCount = 8 + intensity;
   const firstSide: -1 | 1 = waveIndex % 2 === 0 ? -1 : 1;
   const depthClockScale = Math.max(0.1, speedScale);
   let atMs = 0;

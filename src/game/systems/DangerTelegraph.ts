@@ -1,4 +1,5 @@
 import type { PatternId } from '../../ai/bossSchema';
+import { DODGE_AREA_TOP, DODGE_AREA_BOTTOM } from '../constants';
 import { BEAM_HALF_THICKNESS, beamSegment, type BeamLayout } from '../patterns/deadlineBeam';
 import {
   BOSS_PROJECTILE_ORIGIN,
@@ -13,9 +14,9 @@ export const COMBAT_ARENA = Object.freeze({
   // viewport crop. The player can no longer read either screen edge as a
   // permanently unthreatened strip.
   x: -90,
-  y: 402,
+  y: DODGE_AREA_TOP,
   width: 720,
-  height: 492,
+  height: DODGE_AREA_BOTTOM - DODGE_AREA_TOP,
 });
 
 export interface SafeLaneHint {
@@ -323,6 +324,6 @@ function projectFloorPoint(
   );
   return {
     x: vanishingPoint.x + (point.x - vanishingPoint.x) * depth,
-    y: point.y,
+    y: Math.max(point.y, vanishingPoint.y),
   };
 }

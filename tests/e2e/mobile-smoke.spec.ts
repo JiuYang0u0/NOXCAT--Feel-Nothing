@@ -1,8 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
-import { FINGER_OFFSET_Y, PLAYER_MIN_Y } from '../../src/game/constants';
+import { FINGER_OFFSET_Y, PLAYER_MAX_Y, PLAYER_MIN_Y } from '../../src/game/constants';
 import { noxcatPerspectiveScale } from '../../src/game/systems/JellyMotionSystem';
 
-test('an API failure falls back locally and three real pull-release launches win', async ({ page, browserName }) => {
+test('an API failure falls back locally and four real pull-release launches win', async ({ page, browserName }) => {
   await page.route('**/api/boss', (route) => route.abort('failed'));
   await page.goto('/?debug=1&demo=off');
   await page.getByTestId('quick-需求一直改').click();
@@ -16,7 +16,7 @@ test('an API failure falls back locally and three real pull-release launches win
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(1);
 
-  for (let hit = 1; hit <= 3; hit += 1) {
+  for (let hit = 1; hit <= 4; hit += 1) {
     await page.waitForFunction(() => {
       const state = window.__NOXCAT_TEST__?.snapshot().state;
       return state === 'DODGING' || state === 'VULNERABLE';
@@ -97,18 +97,23 @@ test('desktop layout accepts keyboard movement without horizontal overflow', asy
   const after = await page.evaluate(() => window.__NOXCAT_TEST__?.visualSnapshot());
 
   expect((after?.x ?? 0)).toBeLessThan((before?.x ?? 0) - 8);
-  await page.keyboard.down('ArrowUp');
-  await page.waitForTimeout(1_000);
-  await page.keyboard.up('ArrowUp');
-  await page.waitForTimeout(150);
-  const upper = await page.evaluate(() => window.__NOXCAT_TEST__?.visualSnapshot());
+  // 每幀的模擬時間有 50ms 夾限，機器一忙同樣的牆鐘時間走的模擬距離就變短。
+  // 改成按住直到抵達邊界，測的仍是「鍵盤能一路推到移動區邊界並停在那裡」。
+  const holdUntilY = async (key: string, edgeY: number) => {
+    await page.keyboard.down(key);
+    await page.waitForFunction(
+      (target) => Math.abs((window.__NOXCAT_TEST__?.visualSnapshot().y ?? 9_999) - target) < 0.5,
+      edgeY,
+      { timeout: 8_000 },
+    );
+    await page.keyboard.up(key);
+    await page.waitForTimeout(150);
+    return page.evaluate(() => window.__NOXCAT_TEST__?.visualSnapshot());
+  };
+  const upper = await holdUntilY('ArrowUp', PLAYER_MIN_Y);
   expect(upper?.y).toBeCloseTo(PLAYER_MIN_Y, 0);
-  await page.keyboard.down('s');
-  await page.waitForTimeout(1_000);
-  await page.keyboard.up('s');
-  await page.waitForTimeout(150);
-  const lower = await page.evaluate(() => window.__NOXCAT_TEST__?.visualSnapshot());
-  expect(lower?.y).toBeCloseTo(884, 0);
+  const lower = await holdUntilY('s', PLAYER_MAX_Y);
+  expect(lower?.y).toBeCloseTo(PLAYER_MAX_Y, 0);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(1);
   const box = await canvas.boundingBox();
@@ -203,6 +208,8 @@ test('jelly body follows a fast drag without a tail, glows, rebounds, and keeps 
 });
 
 test('default Neutral mode disclosure can be skipped without blocking play', async ({ page }) => {
+  // 揭露畫面與 Boss 來源無關；不攔截的話兩批對話生成要跑 20 秒以上。
+  await page.route('**/api/boss', (route) => route.abort('failed'));
   await page.goto('/');
   await expect(page.locator('#camera-enabled')).toHaveCount(0);
   await page.getByTestId('generate-boss').click();

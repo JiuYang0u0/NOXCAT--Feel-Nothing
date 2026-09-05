@@ -618,7 +618,7 @@ describe('shared projectile perspective depth', () => {
       expect(duration).toBeGreaterThanOrEqual(650);
       expect(duration).toBeLessThan(RETURNABLE_OPENING_CLEAR_MS);
     }
-    expect(durations(burstA.returnableProjectiles)).toHaveLength(1);
+    expect(durations(burstA.returnableProjectiles)).toHaveLength(2);
     expect(durations(burstA.returnableProjectiles)[0]).toBeGreaterThanOrEqual(1_400);
     expect(durations(burstA.returnableProjectiles)[0]).toBeLessThanOrEqual(1_500);
   });

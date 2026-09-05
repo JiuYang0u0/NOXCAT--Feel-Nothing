@@ -47,7 +47,7 @@ export function planTopDownpour(
   const clampedLane = clamp(safeLaneX, 90, 450);
   const leftMaximum = clampedLane - LANE_CLEARANCE;
   const rightMinimum = clampedLane + LANE_CLEARANCE;
-  const totalCount = 8 + intensity * 2;
+  const totalCount = 12 + intensity * 2;
   const leftSpan = Math.max(0, leftMaximum - FALLING_ATTACK_MIN_X);
   const rightSpan = Math.max(0, FALLING_ATTACK_MAX_X - rightMinimum);
   const combinedSpan = Math.max(1, leftSpan + rightSpan);
